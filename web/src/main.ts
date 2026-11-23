@@ -1,6 +1,7 @@
 import { CandlestickSeries, ColorType, CrosshairMode, createChart, type CandlestickData, type UTCTimestamp } from "lightweight-charts";
 import * as api from "./api";
 import { HeatLayer, toChart } from "./heatmap";
+import { DEFAULTS, clampOptions, type HeatOptions } from "./scale";
 import "./style.css";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -76,6 +77,26 @@ function applyTick(s: api.Snapshot) {
   }
 }
 
+// candles come from Angel's REST API, which rate-limits; the live feed does not depend on them, so a failure retries quietly
+async function loadBars(sym: string, attempt: number) {
+  try {
+    const cs = await api.candles(sym, 2);
+    if (symbol !== sym) return;
+    bars = cs.map((c) => ({ time: toChart(c.time * 1000) as UTCTimestamp, open: c.open, high: c.high, low: c.low, close: c.close }));
+    series.setData(bars);
+    heat.setBars(bars.map((b) => b.time as number));
+    const dayStart = bars.length ? (bars[bars.length - 1].time as number) - ((bars[bars.length - 1].time as number) % 86400) : 0;
+    const before = bars.filter((b) => (b.time as number) < dayStart);
+    prevClose = before.length ? before[before.length - 1].close : bars.length ? bars[0].open : null;
+    chart.timeScale().fitContent();
+    chart.timeScale().scrollToRealTime();
+  } catch (e) {
+    if (symbol !== sym) return;
+    $("legend").textContent = `Candles unavailable (${(e as Error).message}). Retrying...`;
+    if (attempt < 6) setTimeout(() => void loadBars(sym, attempt + 1), 4000 * (attempt + 1));
+  }
+}
+
 async function open(sym: string) {
   feed?.close();
   symbol = sym;
@@ -84,25 +105,19 @@ async function open(sym: string) {
   $("chg").textContent = "";
   setStatus("Loading...", "warn");
   heat.setSnapshots([]);
+  let snaps: Awaited<ReturnType<typeof api.snapshots>>;
   try {
-    const [cs, snaps] = await Promise.all([api.candles(sym, 2), api.snapshots(sym, 90)]);
-    bars = cs.map((c) => ({ time: toChart(c.time * 1000) as UTCTimestamp, open: c.open, high: c.high, low: c.low, close: c.close }));
-    series.setData(bars);
-    heat.setBars(bars.map((b) => b.time as number));
-    const dayStart = bars.length ? bars[bars.length - 1].time - ((bars[bars.length - 1].time as number) % 86400) : 0;
-    const before = bars.filter((b) => (b.time as number) < dayStart);
-    prevClose = before.length ? before[before.length - 1].close : bars.length ? bars[0].open : null;
-    heat.setSnapshots(snaps.snapshots);
-    if (snaps.snapshots.length) ladder(snaps.snapshots[snaps.snapshots.length - 1]);
-    chart.timeScale().fitContent();
-    chart.timeScale().scrollToRealTime();
-    $("legend").textContent = snaps.snapshots.length
-      ? `${snaps.snapshots.length.toLocaleString("en-IN")} depth snapshots loaded`
-      : (snaps.note ?? "No depth recorded yet for this symbol.");
+    snaps = await api.snapshots(sym, 90);
   } catch (e) {
     setStatus(`Could not load: ${(e as Error).message}`, "bad");
     return;
   }
+  heat.setSnapshots(snaps.snapshots);
+  if (snaps.snapshots.length) ladder(snaps.snapshots[snaps.snapshots.length - 1]);
+  $("legend").textContent = snaps.snapshots.length
+    ? `${snaps.snapshots.length.toLocaleString("en-IN")} depth snapshots loaded`
+    : (snaps.note ?? "No depth recorded yet for this symbol.");
+  void loadBars(sym, 0);
   feed = api.live(
     sym,
     (s) => {
@@ -117,6 +132,42 @@ async function open(sym: string) {
     },
   );
 }
+
+// heat controls (kept in this browser)
+const KEY = "heatcharting.heat";
+let opts: HeatOptions = DEFAULTS;
+try {
+  opts = clampOptions(JSON.parse(localStorage.getItem(KEY) ?? "null"));
+} catch {
+  opts = DEFAULTS;
+}
+const qtyOf = (v: number) => (v <= 0 ? 0 : Math.round(10 ** (v / 20))); // slider 0..100 -> 0 .. 100,000 shares, steps grow by 10x every 20 notches
+const sliderOf = (q: number) => (q <= 0 ? 0 : Math.round(20 * Math.log10(q)));
+const panel = $("toolsPanel");
+function showOptions() {
+  ($("opacity") as HTMLInputElement).value = String(Math.round(opts.opacity * 100));
+  ($("minQty") as HTMLInputElement).value = String(sliderOf(opts.minQty));
+  ($("walls") as HTMLInputElement).checked = opts.wallsOnly;
+  $("opVal").textContent = `${Math.round(opts.opacity * 100)}%`;
+  $("minVal").textContent = opts.minQty > 0 ? opts.minQty.toLocaleString("en-IN") : "all";
+  panel.querySelectorAll<HTMLButtonElement>("[data-scale]").forEach((b) => b.classList.toggle("on", b.dataset.scale === opts.scale));
+}
+function setOptions(next: HeatOptions) {
+  opts = clampOptions(next);
+  localStorage.setItem(KEY, JSON.stringify(opts));
+  heat.setOptions(opts);
+  showOptions();
+}
+$("toolsBtn").addEventListener("click", () => {
+  panel.hidden = !panel.hidden;
+  $("toolsBtn").setAttribute("aria-expanded", String(!panel.hidden));
+});
+panel.querySelectorAll<HTMLButtonElement>("[data-scale]").forEach((b) => b.addEventListener("click", () => setOptions({ ...opts, scale: b.dataset.scale as HeatOptions["scale"] })));
+$("opacity").addEventListener("input", (e) => setOptions({ ...opts, opacity: Number((e.target as HTMLInputElement).value) / 100 }));
+$("minQty").addEventListener("input", (e) => setOptions({ ...opts, minQty: qtyOf(Number((e.target as HTMLInputElement).value)) }));
+$("walls").addEventListener("change", (e) => setOptions({ ...opts, wallsOnly: (e.target as HTMLInputElement).checked }));
+$("reset").addEventListener("click", () => setOptions(DEFAULTS));
+setOptions(opts);
 
 // the status line: live, or an honest "no data" when the market is closed or the feed is quiet
 setInterval(() => {

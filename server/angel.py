@@ -17,6 +17,8 @@ IST = dt.timezone(dt.timedelta(hours=5, minutes=30))
 _lock = threading.Lock()
 _equities: list[dict] | None = None
 _client = {"sc": None, "ts": 0.0}
+CACHE_SECONDS = 20
+_cache: dict = {}
 
 
 def _load_equities() -> list[dict]:
@@ -73,16 +75,30 @@ def candles(token: str, days: int = 2, interval: str = "ONE_MINUTE") -> list[dic
     now = dt.datetime.now(IST)
     payload = {"exchange": "NSE", "symboltoken": token, "interval": interval,
                "fromdate": (now - dt.timedelta(days=min(days, 25))).strftime("%Y-%m-%d 09:15"), "todate": now.strftime("%Y-%m-%d %H:%M")}
+    key = (token, days, interval)
+    hit = _cache.get(key)
+    if hit and time.time() - hit[0] < CACHE_SECONDS:
+        return hit[1]
     sc = client()
     if sc is None:
         raise RuntimeError("Angel One is not available (check the credentials in .env)")
-    res = sc.getCandleData(payload)
-    if angel_session.is_invalid_token(res):
-        sc, _ = angel_session.ensure(bad_ts=_client["ts"])
-        res = sc.getCandleData(payload) if sc else res
+    res = None
+    for attempt in range(3):
+        try:
+            res = sc.getCandleData(payload)
+            if angel_session.is_invalid_token(res):
+                sc, _ = angel_session.ensure(bad_ts=_client["ts"])
+                res = sc.getCandleData(payload) if sc else res
+            break
+        except Exception as e:      # the SDK raises (not returns) when Angel answers with plain text such as its rate-limit message
+            if "rate" in str(e).lower() and attempt < 2:
+                time.sleep(1.5 * (attempt + 1))
+                continue
+            raise RuntimeError(f"Angel candle request failed: {str(e)[:140]}") from e
     if not isinstance(res, dict) or res.get("status") is not True:
         raise RuntimeError(f"Angel candle request failed: {(res or {}).get('message') if isinstance(res, dict) else res}")
     out = []
     for ts, o, h, l, c, v in res.get("data") or []:
         out.append({"time": int(dt.datetime.fromisoformat(ts).timestamp()), "open": o, "high": h, "low": l, "close": c, "volume": v})
+    _cache[key] = (time.time(), out)
     return out

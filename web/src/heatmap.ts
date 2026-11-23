@@ -1,5 +1,6 @@
 import type { IChartApi, ISeriesApi, Logical } from "lightweight-charts";
 import type { Level, Snapshot } from "./api";
+import { DEFAULTS, alpha, drawThreshold, strength, type HeatOptions } from "./scale";
 
 /** The chart shows times in IST by shifting UTC seconds. All chart times pass through toChart(). */
 export const IST_SECONDS = 19800;
@@ -9,12 +10,6 @@ const BID = [20, 184, 166]; // teal
 const ASK = [244, 114, 70]; // orange
 const MAX_HOLD_MS = 120_000; // a snapshot is drawn until the next one, but never longer than this (a market pause is not liquidity)
 
-/** Colour strength 0..1 for a resting quantity against the largest one in view (log scale, so thin and heavy both show). */
-export function strength(qty: number, max: number): number {
-  if (!(qty > 0) || !(max > 0)) return 0;
-  return Math.min(1, Math.log1p(qty) / Math.log1p(max));
-}
-
 /** Paints resting orders behind the candles: one band per price level, from one snapshot to the next. */
 export class HeatLayer {
   private ctx: CanvasRenderingContext2D;
@@ -22,6 +17,7 @@ export class HeatLayer {
   private barTimes: number[] = []; // chart seconds of the candles, oldest first
   private tick = 0.05;
   private dirty = true;
+  private opts: HeatOptions = DEFAULTS;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -44,6 +40,10 @@ export class HeatLayer {
   add(s: Snapshot) {
     this.snaps.push(s);
     if (this.snaps.length > 40_000) this.snaps.splice(0, 5_000);
+    this.invalidate();
+  }
+  setOptions(o: HeatOptions) {
+    this.opts = o;
     this.invalidate();
   }
   setTick(t: number) {
@@ -100,6 +100,13 @@ export class HeatLayer {
     }
     if (!max) return;
 
+    // what is drawn: every level, only those above a minimum size, or only the unusually large ones (the top tenth in view)
+    const quantities: number[] = [];
+    for (const s of visible) for (const side of [s.bids, s.asks]) for (const lv of side) quantities.push(lv[1]);
+    const floor = drawThreshold(this.opts, quantities);
+    const shownMax = Math.max(0, ...quantities.filter((q) => q >= floor));
+    if (!shownMax) return;
+
     const half = this.tick / 2;
     for (let i = 0; i < visible.length; i++) {
       const s = visible[i];
@@ -113,17 +120,18 @@ export class HeatLayer {
       const x1 = this.chart.timeScale().logicalToCoordinate(l1 as Logical);
       if (x0 == null || x1 == null) continue;
       const width = Math.max(1, x1 - x0);
-      this.paint(s.bids, BID, x0, width, half, max);
-      this.paint(s.asks, ASK, x0, width, half, max);
+      this.paint(s.bids, BID, x0, width, half, shownMax, floor);
+      this.paint(s.asks, ASK, x0, width, half, shownMax, floor);
     }
   }
 
-  private paint(levels: Level[], rgb: number[], x: number, width: number, half: number, max: number) {
+  private paint(levels: Level[], rgb: number[], x: number, width: number, half: number, max: number, floor: number) {
     for (const [price, qty] of levels) {
+      if (qty < floor) continue;
       const yTop = this.series.priceToCoordinate(price + half);
       const yBot = this.series.priceToCoordinate(price - half);
       if (yTop == null || yBot == null) continue;
-      const a = 0.12 + 0.78 * strength(qty, max);
+      const a = alpha(strength(qty, max, this.opts.scale), this.opts.opacity);
       this.ctx.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${a.toFixed(3)})`;
       this.ctx.fillRect(x, yTop, width + 0.5, Math.max(1.5, yBot - yTop));
     }

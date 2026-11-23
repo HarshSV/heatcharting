@@ -16,7 +16,19 @@
       <div class="status"><span id="dot"></span><span id="status">Starting...</span></div>
     </header>
     <main>
-      <section class="chart-wrap"><div id="chart"></div><canvas id="heat"></canvas><div id="legend"></div></section>
+      <section class="chart-wrap"><div id="chart"></div><canvas id="heat"></canvas><div id="legend"></div>
+        <div class="tools">
+          <button id="toolsBtn" type="button" aria-expanded="false">Heat</button>
+          <div id="toolsPanel" hidden>
+            <div class="field"><span>Scale</span>
+              <div class="seg"><button type="button" data-scale="log">Log</button><button type="button" data-scale="linear">Linear</button></div>
+            </div>
+            <label class="field"><span>Opacity <b id="opVal"></b></span><input id="opacity" type="range" min="10" max="100" step="5" /></label>
+            <label class="field"><span>Min size <b id="minVal"></b></span><input id="minQty" type="range" min="0" max="100" step="1" /></label>
+            <label class="check"><input id="walls" type="checkbox" /> Walls only <small>(largest tenth in view)</small></label>
+            <button id="reset" type="button" class="link">Reset</button>
+          </div>
+        </div></section>
       <aside class="ladder">
         <h2>Order book <small>best 5</small></h2>
         <div id="asks"></div>
