@@ -47,8 +47,8 @@ async function get<T>(url: string): Promise<T> {
 }
 
 export const search = (q: string) => get<Company[]>(`/api/search?q=${encodeURIComponent(q)}`);
-export const candles = (symbol: string, days = 2) =>
-  get<{ candles: Candle[] }>(`/api/candles?symbol=${encodeURIComponent(symbol)}&days=${days}`).then((r) => r.candles);
+export const candles = (symbol: string, days = 2, interval = "ONE_MINUTE") =>
+  get<{ candles: Candle[] }>(`/api/candles?symbol=${encodeURIComponent(symbol)}&days=${days}&interval=${interval}`).then((r) => r.candles);
 export const snapshots = (symbol: string, minutes = 90) =>
   get<{ snapshots: Snapshot[]; note?: string }>(`/api/snapshots?symbol=${encodeURIComponent(symbol)}&minutes=${minutes}`);
 export const walls = (symbol: string, minutes = 90) =>

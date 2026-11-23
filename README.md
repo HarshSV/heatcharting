@@ -3,7 +3,7 @@
 A live **liquidity heatmap for NSE stocks**: the orders resting in the book are painted behind the candles, so you can see where size is waiting.
 This is an original implementation (Python server + TypeScript web app). It contains no code, assets or branding from any other product.
 
-## What works today (v1)
+## What works today
 
 | Feature | Detail |
 |---|---|
@@ -12,6 +12,17 @@ This is an original implementation (Python server + TypeScript web app). It cont
 | Liquidity heat | The best five bids (teal) and asks (orange) over time; brighter means more shares resting at that price (log scale) |
 | Heat controls | **Heat** button: log or linear colour scale, opacity, a minimum size (hide thin orders), and **walls only** (just the largest tenth of resting orders in view). Saved in your browser, with a Reset |
 | Wall tracking | A **wall** is an order at least 3x the median level size (judged over the last ~600 levels). The chart marks when one **appeared** (triangle), was **pulled** (cross, amber) or was **eaten** (solid diamond), and the side panel logs them. Events are stored (7 days) and sent live. *Pulled* is inferred: the order vanished and trading does not explain it. A wall that leaves the five visible levels is dropped silently, never called pulled |
+| Timeframes | 1m, 3m, 5m, 15m, 30m, 1h, 4h, D, W. The 4h and weekly bars are built from 1h and daily candles. The depth heat shows on 1m to 1h bars only |
+| Chart types | Candles, Heikin Ashi, Bars (OHLC), Line, Area, Baseline |
+| Indicators | Volume, SMA, EMA, VWAP (daily reset), Bollinger Bands, RSI, MACD, ATR. Edit periods and colours, remove any; RSI, MACD and ATR get their own panes |
+| Compare | Overlay up to 4 other symbols, rebased to start at the main symbol's price |
+| Visibility (eye) | Show or hide the heat, wall markers, indicators and compared symbols |
+| Alerts | Price alerts drawn as lines on the chart, fired on-screen with a sound and a browser notification when the price reaches the level. They only fire while the page is open |
+| Replay | Step or play through past candles at 1x to 30x, with the recorded depth heat and wall events as they were (starts at the latest session's open) |
+| Undo / redo | Every layout change (indicators, chart type, timeframe, compares, visibility) |
+| Layouts | Save and load named layouts; 1, 2 or 4 charts on screen, each with its own symbol, timeframe and indicators |
+| Theme, picture, export | Dark and light theme; save a PNG of the chart with the heat on it; export the candles as CSV |
+| Paper trading | **Trade** button: practise buys and sells at the live price with a cash balance, positions, realised and open P&L. Practice only: no order is ever sent to a broker |
 | Order book panel | The live best-five ladder with quantity bars |
 | Recording | Every snapshot is stored in SQLite (7 days), so a refresh or a closed market still shows the last recorded session |
 | Honest status | "Live", "No update for N s", or "Waiting for the feed (market closed?)"; unknown values are never shown as zero |

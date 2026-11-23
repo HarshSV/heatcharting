@@ -1,37 +1,40 @@
-import type { IChartApi, ISeriesApi, Logical } from "lightweight-charts";
+import type { IChartApi, ISeriesApi, Logical, SeriesType } from "lightweight-charts";
 import type { Level, Snapshot, WallEvent } from "./api";
 import { DEFAULTS, alpha, drawThreshold, shortQty, strength, type HeatOptions } from "./scale";
-
-/** The chart shows times in IST by shifting UTC seconds. All chart times pass through toChart(). */
-export const IST_SECONDS = 19800;
-export const toChart = (ms: number) => Math.floor(ms / 1000) + IST_SECONDS;
+import { toChartSec } from "./transform";
 
 const BID = [20, 184, 166]; // teal
 const ASK = [244, 114, 70]; // orange
 const MAX_HOLD_MS = 120_000; // a snapshot is drawn until the next one, but never longer than this (a market pause is not liquidity)
 
-/** Paints resting orders behind the candles: one band per price level, from one snapshot to the next. */
+/** Paints resting orders behind the candles: one band per price level, from one snapshot to the next. Only the main (top) pane is painted. */
 export class HeatLayer {
   private ctx: CanvasRenderingContext2D;
   private snaps: Snapshot[] = [];
   private events: WallEvent[] = [];
-  private barTimes: number[] = []; // chart seconds of the candles, oldest first
+  private barTimes: number[] = []; // chart seconds of the bars, oldest first
+  private barSec = 300;
   private tick = 0.05;
   private dirty = true;
   private opts: HeatOptions = DEFAULTS;
+  private enabled = true;
+  private markers = true;
+  private cutoff: number | null = null; // replay: nothing after this time (ms) is drawn
+  private series: ISeriesApi<SeriesType> | null = null;
 
-  constructor(
-    private canvas: HTMLCanvasElement,
-    private chart: IChartApi,
-    private series: ISeriesApi<"Candlestick">,
-  ) {
+  constructor(private canvas: HTMLCanvasElement, private chart: IChartApi) {
     this.ctx = canvas.getContext("2d")!;
     chart.timeScale().subscribeVisibleLogicalRangeChange(() => this.invalidate());
     setInterval(() => this.dirty && this.draw(), 150);
   }
 
-  setBars(times: number[]) {
+  setSeries(s: ISeriesApi<SeriesType>) {
+    this.series = s;
+    this.invalidate();
+  }
+  setBars(times: number[], barSec: number) {
     this.barTimes = times;
+    this.barSec = barSec;
     this.invalidate();
   }
   setSnapshots(s: Snapshot[]) {
@@ -55,6 +58,16 @@ export class HeatLayer {
     this.opts = o;
     this.invalidate();
   }
+  /** `heat`: paint the bands; `markers`: paint wall events. */
+  setVisible(heat: boolean, markers: boolean) {
+    this.enabled = heat;
+    this.markers = markers;
+    this.invalidate();
+  }
+  setCutoff(ms: number | null) {
+    this.cutoff = ms;
+    this.invalidate();
+  }
   setTick(t: number) {
     this.tick = t;
     this.invalidate();
@@ -73,20 +86,20 @@ export class HeatLayer {
     this.invalidate();
   }
 
-  /** Fractional logical index of a time: the candle's position plus the part of the minute that has passed. */
+  /** Fractional logical index of a time: the bar's position plus the part of the bar that has passed. */
   private logical(sec: number): number | null {
     const b = this.barTimes;
     if (!b.length) return null;
     let lo = 0;
     let hi = b.length - 1;
-    if (sec >= b[hi]) return hi + (sec - b[hi]) / 60;
+    if (sec >= b[hi]) return hi + (sec - b[hi]) / this.barSec;
     if (sec < b[0]) return null;
     while (lo < hi) {
       const mid = (lo + hi + 1) >> 1;
       if (b[mid] <= sec) lo = mid;
       else hi = mid - 1;
     }
-    return lo + (sec - b[lo]) / 60;
+    return lo + Math.min(1, (sec - b[lo]) / this.barSec);
   }
 
   draw() {
@@ -96,59 +109,78 @@ export class HeatLayer {
     const h = parseFloat(this.canvas.style.height) || 0;
     ctx.clearRect(0, 0, w, h);
     const range = this.chart.timeScale().getVisibleLogicalRange();
-    if (!range || !this.snaps.length) return;
+    if (!range || !this.series) return;
+    const paneH = this.chart.panes()[0]?.getHeight() ?? h;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, w, paneH);
+    ctx.clip();
+    if (this.enabled && this.snaps.length) this.drawHeat(range.from, range.to);
+    if (this.markers) this.drawEvents(range.from, range.to);
+    ctx.restore();
+  }
 
-    // snapshots in view, and the largest quantity among them (colour scale)
+  private drawHeat(from: number, to: number) {
+    // snapshots in view (and not after the replay cursor), and the largest quantity among them (colour scale)
     const visible: Snapshot[] = [];
-    let max = 0;
     for (const s of this.snaps) {
-      const l = this.logical(toChart(s.t));
-      if (l == null || l < range.from - 5 || l > range.to + 5) continue;
+      if (this.cutoff != null && s.t > this.cutoff) break;
+      const l = this.logical(toChartSec(s.t));
+      if (l == null || l < from - 5 || l > to + 5) continue;
       visible.push(s);
-      for (const side of [s.bids, s.asks]) for (const lv of side) max = Math.max(max, lv[1]);
     }
-    if (!max) return;
-
-    // what is drawn: every level, only those above a minimum size, or only the unusually large ones (the top tenth in view)
     const quantities: number[] = [];
     for (const s of visible) for (const side of [s.bids, s.asks]) for (const lv of side) quantities.push(lv[1]);
+    if (!quantities.length) return;
+    // what is drawn: every level, only those above a minimum size, or only the unusually large ones (the top tenth in view)
     const floor = drawThreshold(this.opts, quantities);
     const shownMax = Math.max(0, ...quantities.filter((q) => q >= floor));
     if (!shownMax) return;
-
     const half = this.tick / 2;
+    const ts = this.chart.timeScale();
     for (let i = 0; i < visible.length; i++) {
       const s = visible[i];
       const next = visible[i + 1];
-      const t0 = s.t;
-      const t1 = next ? Math.min(next.t, t0 + MAX_HOLD_MS) : t0 + 1500;
-      const l0 = this.logical(toChart(t0));
-      const l1 = this.logical(toChart(t1));
+      const t1 = next ? Math.min(next.t, s.t + MAX_HOLD_MS) : s.t + 1500;
+      const l0 = this.logical(toChartSec(s.t));
+      const l1 = this.logical(toChartSec(t1));
       if (l0 == null || l1 == null) continue;
-      const x0 = this.chart.timeScale().logicalToCoordinate(l0 as Logical);
-      const x1 = this.chart.timeScale().logicalToCoordinate(l1 as Logical);
+      const x0 = ts.logicalToCoordinate(l0 as Logical);
+      const x1 = ts.logicalToCoordinate(l1 as Logical);
       if (x0 == null || x1 == null) continue;
       const width = Math.max(1, x1 - x0);
       this.paint(s.bids, BID, x0, width, half, shownMax, floor);
       this.paint(s.asks, ASK, x0, width, half, shownMax, floor);
     }
-    if (this.opts.showWalls) this.drawEvents(range.from, range.to);
+  }
+
+  private paint(levels: Level[], rgb: number[], x: number, width: number, half: number, max: number, floor: number) {
+    for (const [price, qty] of levels) {
+      if (qty < floor) continue;
+      const yTop = this.series!.priceToCoordinate(price + half);
+      const yBot = this.series!.priceToCoordinate(price - half);
+      if (yTop == null || yBot == null) continue;
+      const a = alpha(strength(qty, max, this.opts.scale), this.opts.opacity);
+      this.ctx.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${a.toFixed(3)})`;
+      this.ctx.fillRect(x, yTop, width + 0.5, Math.max(1.5, yBot - yTop));
+    }
   }
 
   /** Wall events on top of the heat: a hollow triangle when a wall appeared, a cross when it was pulled, a solid diamond when it was eaten. */
   private drawEvents(from: number, to: number) {
     const { ctx } = this;
     const inView = this.events.filter((e) => {
-      const l = this.logical(toChart(e.t));
+      if (this.cutoff != null && e.t > this.cutoff) return false;
+      const l = this.logical(toChartSec(e.t));
       return l != null && l >= from - 2 && l <= to + 2;
     });
     const label = inView.length <= 40;
     ctx.font = "11px Inter, system-ui, sans-serif";
     ctx.textBaseline = "middle";
     for (const e of inView) {
-      const l = this.logical(toChart(e.t));
+      const l = this.logical(toChartSec(e.t));
       const x = l == null ? null : this.chart.timeScale().logicalToCoordinate(l as Logical);
-      const y = this.series.priceToCoordinate(e.price);
+      const y = this.series!.priceToCoordinate(e.price);
       if (x == null || y == null) continue;
       const col = e.side === "bid" ? "rgb(20,184,166)" : "rgb(244,114,70)";
       ctx.lineWidth = 1.6;
@@ -182,15 +214,8 @@ export class HeatLayer {
     }
   }
 
-  private paint(levels: Level[], rgb: number[], x: number, width: number, half: number, max: number, floor: number) {
-    for (const [price, qty] of levels) {
-      if (qty < floor) continue;
-      const yTop = this.series.priceToCoordinate(price + half);
-      const yBot = this.series.priceToCoordinate(price - half);
-      if (yTop == null || yBot == null) continue;
-      const a = alpha(strength(qty, max, this.opts.scale), this.opts.opacity);
-      this.ctx.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${a.toFixed(3)})`;
-      this.ctx.fillRect(x, yTop, width + 0.5, Math.max(1.5, yBot - yTop));
-    }
+  /** The painted layer as a canvas, for screenshots. */
+  get element() {
+    return this.canvas;
   }
 }

@@ -2,7 +2,7 @@
 
   GET  /api/health                    status of the Angel login and the live feed
   GET  /api/search?q=                 NSE companies by symbol or name
-  GET  /api/candles?symbol=&days=     one-minute candles (Angel One)
+  GET  /api/candles?symbol=&interval=&days=  candles (Angel One: ONE_MINUTE .. ONE_DAY; 4h and weekly are built from 1h and daily in the browser)
   GET  /api/snapshots?symbol=&minutes=  recorded depth snapshots (best five bids and asks over time)
   GET  /api/walls?symbol=&minutes=    wall events: a large resting order appeared, was pulled, or was eaten
   WS   /ws?symbol=                    live messages: {"type":"snap",...} depth snapshots and {"type":"wall",...} wall events
@@ -66,10 +66,10 @@ def search(q: str = ""):
 
 
 @app.get("/api/candles")
-def candles(symbol: str, days: int = 2):
+def candles(symbol: str, days: int = 2, interval: str = "ONE_MINUTE"):
     s = _stock(symbol)
     try:
-        return {"symbol": s["symbol"], "candles": angel.candles(s["token"], max(1, min(days, 25)))}
+        return {"symbol": s["symbol"], "interval": interval, "candles": angel.candles(s["token"], days, interval)}
     except RuntimeError as e:
         raise HTTPException(status_code=502, detail=str(e))
 

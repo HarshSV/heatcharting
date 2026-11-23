@@ -69,12 +69,20 @@ def client():
     return _client["sc"]
 
 
+# the longest span (calendar days) Angel returns in one request for each interval
+MAX_DAYS = {"ONE_MINUTE": 30, "THREE_MINUTE": 60, "FIVE_MINUTE": 100, "TEN_MINUTE": 100, "FIFTEEN_MINUTE": 200, "THIRTY_MINUTE": 200,
+            "ONE_HOUR": 400, "ONE_DAY": 2000}
+
+
 def candles(token: str, days: int = 2, interval: str = "ONE_MINUTE") -> list[dict]:
     """Candles for the last `days` calendar days as [{time (UTC seconds), open, high, low, close, volume}], oldest first.
-    Angel caps one request at about 30 days of one-minute data."""
+    Angel caps one request (see MAX_DAYS); a longer span is cut to the cap."""
+    if interval not in MAX_DAYS:
+        raise RuntimeError(f"Unsupported interval {interval!r}.")
+    days = max(1, min(days, MAX_DAYS[interval]))
     now = dt.datetime.now(IST)
     payload = {"exchange": "NSE", "symboltoken": token, "interval": interval,
-               "fromdate": (now - dt.timedelta(days=min(days, 25))).strftime("%Y-%m-%d 09:15"), "todate": now.strftime("%Y-%m-%d %H:%M")}
+               "fromdate": (now - dt.timedelta(days=days)).strftime("%Y-%m-%d 09:15"), "todate": now.strftime("%Y-%m-%d %H:%M")}
     key = (token, days, interval)
     hit = _cache.get(key)
     if hit and time.time() - hit[0] < CACHE_SECONDS:
