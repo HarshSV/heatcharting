@@ -47,3 +47,12 @@ def test_store_round_trip(tmp_path, monkeypatch):
     got = store.since("TCS", s["t"])
     assert [x["t"] for x in got] == [s["t"], s["t"] + 60_000] and got[0]["bids"][0][0] == 2477.70
     assert store.since("TCS", s["t"] + 1)[0]["t"] == s["t"] + 60_000 and store.latest_time("INFY") is None
+
+
+def test_wall_events_are_stored_and_read_back(tmp_path, monkeypatch):
+    monkeypatch.setattr(store, "DB_PATH", str(tmp_path / "w.db"))
+    store.add_wall("TCS", {"t": 5000, "kind": "pulled", "side": "bid", "price": 99.9, "qty": 4800, "held_s": 12})
+    store.add_wall("TCS", {"t": 9000, "kind": "appeared", "side": "ask", "price": 100.2, "qty": 5000})
+    got = store.walls_since("TCS", 6000)
+    assert got == [{"t": 9000, "kind": "appeared", "side": "ask", "price": 100.2, "qty": 5000, "held_s": None}]
+    assert [e["kind"] for e in store.walls_since("TCS", 0)] == ["pulled", "appeared"]

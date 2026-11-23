@@ -70,3 +70,12 @@ main { flex: 1; min-height: 0; display: flex; }
 .check { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); margin-bottom: 10px; }
 .check small { color: var(--muted); }
 .link { background: none; border: 0; padding: 0; color: var(--accent); font-size: 12px; cursor: pointer; }
+
+.log-h { margin-top: 16px !important; }
+#wallLog { list-style: none; margin: 0; padding: 0; font-size: 11px; line-height: 1.45; }
+#wallLog li { padding: 4px 6px; border-left: 2px solid var(--line); margin-bottom: 3px; color: var(--text); }
+#wallLog li.empty { color: var(--muted); border-left-color: transparent; }
+#wallLog li.bid { border-left-color: var(--accent); }
+#wallLog li.ask { border-left-color: #f47246; }
+#wallLog li.pulled { color: #f59e0b; }
+#wallLog li time { display: block; color: var(--muted); font-variant-numeric: tabular-nums; }

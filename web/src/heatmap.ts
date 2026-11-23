@@ -1,6 +1,6 @@
 import type { IChartApi, ISeriesApi, Logical } from "lightweight-charts";
-import type { Level, Snapshot } from "./api";
-import { DEFAULTS, alpha, drawThreshold, strength, type HeatOptions } from "./scale";
+import type { Level, Snapshot, WallEvent } from "./api";
+import { DEFAULTS, alpha, drawThreshold, shortQty, strength, type HeatOptions } from "./scale";
 
 /** The chart shows times in IST by shifting UTC seconds. All chart times pass through toChart(). */
 export const IST_SECONDS = 19800;
@@ -14,6 +14,7 @@ const MAX_HOLD_MS = 120_000; // a snapshot is drawn until the next one, but neve
 export class HeatLayer {
   private ctx: CanvasRenderingContext2D;
   private snaps: Snapshot[] = [];
+  private events: WallEvent[] = [];
   private barTimes: number[] = []; // chart seconds of the candles, oldest first
   private tick = 0.05;
   private dirty = true;
@@ -35,6 +36,14 @@ export class HeatLayer {
   }
   setSnapshots(s: Snapshot[]) {
     this.snaps = s;
+    this.invalidate();
+  }
+  setEvents(e: WallEvent[]) {
+    this.events = e;
+    this.invalidate();
+  }
+  addEvent(e: WallEvent) {
+    this.events.push(e);
     this.invalidate();
   }
   add(s: Snapshot) {
@@ -122,6 +131,54 @@ export class HeatLayer {
       const width = Math.max(1, x1 - x0);
       this.paint(s.bids, BID, x0, width, half, shownMax, floor);
       this.paint(s.asks, ASK, x0, width, half, shownMax, floor);
+    }
+    if (this.opts.showWalls) this.drawEvents(range.from, range.to);
+  }
+
+  /** Wall events on top of the heat: a hollow triangle when a wall appeared, a cross when it was pulled, a solid diamond when it was eaten. */
+  private drawEvents(from: number, to: number) {
+    const { ctx } = this;
+    const inView = this.events.filter((e) => {
+      const l = this.logical(toChart(e.t));
+      return l != null && l >= from - 2 && l <= to + 2;
+    });
+    const label = inView.length <= 40;
+    ctx.font = "11px Inter, system-ui, sans-serif";
+    ctx.textBaseline = "middle";
+    for (const e of inView) {
+      const l = this.logical(toChart(e.t));
+      const x = l == null ? null : this.chart.timeScale().logicalToCoordinate(l as Logical);
+      const y = this.series.priceToCoordinate(e.price);
+      if (x == null || y == null) continue;
+      const col = e.side === "bid" ? "rgb(20,184,166)" : "rgb(244,114,70)";
+      ctx.lineWidth = 1.6;
+      ctx.strokeStyle = e.kind === "pulled" ? "#f59e0b" : col;
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      if (e.kind === "appeared") {
+        ctx.moveTo(x - 5, y + 4);
+        ctx.lineTo(x + 5, y + 4);
+        ctx.lineTo(x, y - 5);
+        ctx.closePath();
+        ctx.stroke();
+      } else if (e.kind === "pulled") {
+        ctx.moveTo(x - 5, y - 5);
+        ctx.lineTo(x + 5, y + 5);
+        ctx.moveTo(x + 5, y - 5);
+        ctx.lineTo(x - 5, y + 5);
+        ctx.stroke();
+      } else {
+        ctx.moveTo(x, y - 6);
+        ctx.lineTo(x + 6, y);
+        ctx.lineTo(x, y + 6);
+        ctx.lineTo(x - 6, y);
+        ctx.closePath();
+        ctx.fill();
+      }
+      if (label) {
+        ctx.fillStyle = e.kind === "pulled" ? "#f59e0b" : "#e6edf6";
+        ctx.fillText(`${e.kind === "appeared" ? "" : e.kind + " "}${shortQty(e.qty)}`, x + 9, y);
+      }
     }
   }
 

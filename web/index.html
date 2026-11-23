@@ -26,6 +26,7 @@
             <label class="field"><span>Opacity <b id="opVal"></b></span><input id="opacity" type="range" min="10" max="100" step="5" /></label>
             <label class="field"><span>Min size <b id="minVal"></b></span><input id="minQty" type="range" min="0" max="100" step="1" /></label>
             <label class="check"><input id="walls" type="checkbox" /> Walls only <small>(largest tenth in view)</small></label>
+            <label class="check"><input id="markers" type="checkbox" /> Wall markers <small>(appeared, pulled, eaten)</small></label>
             <button id="reset" type="button" class="link">Reset</button>
           </div>
         </div></section>
@@ -34,6 +35,8 @@
         <div id="asks"></div>
         <div id="mid">-</div>
         <div id="bids"></div>
+        <h2 class="log-h">Walls <small>large orders</small></h2>
+        <ul id="wallLog"><li class="empty">None yet. A wall is an order several times the usual size.</li></ul>
         <p class="note">Angel One shows the five best bids and asks. Brighter bands in the chart mean more shares resting at that price.</p>
       </aside>
     </main>

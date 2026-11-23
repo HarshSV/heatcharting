@@ -4,7 +4,8 @@
   GET  /api/search?q=                 NSE companies by symbol or name
   GET  /api/candles?symbol=&days=     one-minute candles (Angel One)
   GET  /api/snapshots?symbol=&minutes=  recorded depth snapshots (best five bids and asks over time)
-  WS   /ws?symbol=                    live depth snapshots
+  GET  /api/walls?symbol=&minutes=    wall events: a large resting order appeared, was pulled, or was eaten
+  WS   /ws?symbol=                    live messages: {"type":"snap",...} depth snapshots and {"type":"wall",...} wall events
 
 Run:  python server/app.py   (serves the built web app from web/dist as well). Binds to 127.0.0.1 unless HEATCHART_HOST says otherwise:
 there is no login, so do not expose it to the internet as it is."""
@@ -81,6 +82,16 @@ def snapshots(symbol: str, minutes: int = 90):
     if last is None:
         return {"symbol": s["symbol"], "snapshots": [], "note": "Nothing recorded yet for this symbol. Open it during market hours."}
     return {"symbol": s["symbol"], "snapshots": store.since(s["symbol"], last - max(1, min(minutes, 600)) * 60_000)}
+
+
+@app.get("/api/walls")
+def walls(symbol: str, minutes: int = 90):
+    """Wall events (appeared, pulled, eaten) from the last `minutes` of the most recent recorded session."""
+    s = _stock(symbol)
+    last = store.latest_time(s["symbol"])
+    if last is None:
+        return {"symbol": s["symbol"], "events": []}
+    return {"symbol": s["symbol"], "events": store.walls_since(s["symbol"], last - max(1, min(minutes, 600)) * 60_000)}
 
 
 @app.websocket("/ws")

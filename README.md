@@ -11,6 +11,7 @@ This is an original implementation (Python server + TypeScript web app). It cont
 | Candles | One-minute candles for the last 2 days (Angel One), the last candle updates live |
 | Liquidity heat | The best five bids (teal) and asks (orange) over time; brighter means more shares resting at that price (log scale) |
 | Heat controls | **Heat** button: log or linear colour scale, opacity, a minimum size (hide thin orders), and **walls only** (just the largest tenth of resting orders in view). Saved in your browser, with a Reset |
+| Wall tracking | A **wall** is an order at least 3x the median level size (judged over the last ~600 levels). The chart marks when one **appeared** (triangle), was **pulled** (cross, amber) or was **eaten** (solid diamond), and the side panel logs them. Events are stored (7 days) and sent live. *Pulled* is inferred: the order vanished and trading does not explain it. A wall that leaves the five visible levels is dropped silently, never called pulled |
 | Order book panel | The live best-five ladder with quantity bars |
 | Recording | Every snapshot is stored in SQLite (7 days), so a refresh or a closed market still shows the last recorded session |
 | Honest status | "Live", "No update for N s", or "Waiting for the feed (market closed?)"; unknown values are never shown as zero |
@@ -43,9 +44,9 @@ Tests: `pytest tests` (server) and `cd web && npm test` (heat rules). Type check
 
 ```
 server/   app.py (API + WebSocket) · feed.py (Angel depth socket) · angel.py (search, candles) · angel_session.py (shared login)
-          heat.py (pure functions) · store.py (SQLite)
+          heat.py (pure functions) · walls.py (wall tracker) · store.py (SQLite)
 web/      src/main.ts · heatmap.ts (canvas heat layer on Lightweight Charts) · scale.ts (colour and wall rules) · api.ts · style.css
-tests/    test_server.py
+tests/    test_server.py · test_walls.py
 docs/     FEATURES.md (what is built, what is next)
 ```
 

@@ -1,7 +1,7 @@
 import { CandlestickSeries, ColorType, CrosshairMode, createChart, type CandlestickData, type UTCTimestamp } from "lightweight-charts";
 import * as api from "./api";
 import { HeatLayer, toChart } from "./heatmap";
-import { DEFAULTS, clampOptions, type HeatOptions } from "./scale";
+import { DEFAULTS, clampOptions, wallLine, type HeatOptions } from "./scale";
 import "./style.css";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -44,6 +44,23 @@ function rows(el: HTMLElement, levels: api.Level[], side: "ask" | "bid", max: nu
       ([p, q]) =>
         `<div class="row ${side}"><i style="width:${Math.round((100 * q) / (max || 1))}%"></i><span>${p.toFixed(2)}</span><b>${q.toLocaleString("en-IN")}</b></div>`,
     )
+    .join("");
+}
+
+let wallEvents: api.WallEvent[] = [];
+function renderWalls() {
+  const el = $("wallLog");
+  if (!wallEvents.length) {
+    el.innerHTML = '<li class="empty">None yet. A wall is an order several times the usual size.</li>';
+    return;
+  }
+  el.innerHTML = [...wallEvents]
+    .slice(-15)
+    .reverse()
+    .map((e) => {
+      const t = new Date((Math.floor(e.t / 1000) + 19800) * 1000).toISOString().slice(11, 19);
+      return `<li class="${e.kind} ${e.side}"><time>${t}</time>${wallLine(e)}</li>`;
+    })
     .join("");
 }
 
@@ -113,6 +130,9 @@ async function open(sym: string) {
     return;
   }
   heat.setSnapshots(snaps.snapshots);
+  wallEvents = await api.walls(sym, 90).catch(() => []);
+  heat.setEvents(wallEvents);
+  renderWalls();
   if (snaps.snapshots.length) ladder(snaps.snapshots[snaps.snapshots.length - 1]);
   $("legend").textContent = snaps.snapshots.length
     ? `${snaps.snapshots.length.toLocaleString("en-IN")} depth snapshots loaded`
@@ -120,12 +140,21 @@ async function open(sym: string) {
   void loadBars(sym, 0);
   feed = api.live(
     sym,
-    (s) => {
-      if (symbol !== sym) return;
-      lastLive = Date.now();
-      heat.add(s);
-      ladder(s);
-      applyTick(s);
+    {
+      snap: (s) => {
+        if (symbol !== sym) return;
+        lastLive = Date.now();
+        heat.add(s);
+        ladder(s);
+        applyTick(s);
+      },
+      wall: (w) => {
+        if (symbol !== sym) return;
+        if (wallEvents.some((x) => x.t === w.t && x.kind === w.kind && x.side === w.side && x.price === w.price)) return; // never list one event twice
+        wallEvents.push(w);
+        heat.addEvent(w);
+        renderWalls();
+      },
     },
     (isOpen) => {
       if (!isOpen) setStatus("Reconnecting...", "warn");
@@ -148,6 +177,7 @@ function showOptions() {
   ($("opacity") as HTMLInputElement).value = String(Math.round(opts.opacity * 100));
   ($("minQty") as HTMLInputElement).value = String(sliderOf(opts.minQty));
   ($("walls") as HTMLInputElement).checked = opts.wallsOnly;
+  ($("markers") as HTMLInputElement).checked = opts.showWalls;
   $("opVal").textContent = `${Math.round(opts.opacity * 100)}%`;
   $("minVal").textContent = opts.minQty > 0 ? opts.minQty.toLocaleString("en-IN") : "all";
   panel.querySelectorAll<HTMLButtonElement>("[data-scale]").forEach((b) => b.classList.toggle("on", b.dataset.scale === opts.scale));
@@ -165,6 +195,7 @@ $("toolsBtn").addEventListener("click", () => {
 panel.querySelectorAll<HTMLButtonElement>("[data-scale]").forEach((b) => b.addEventListener("click", () => setOptions({ ...opts, scale: b.dataset.scale as HeatOptions["scale"] })));
 $("opacity").addEventListener("input", (e) => setOptions({ ...opts, opacity: Number((e.target as HTMLInputElement).value) / 100 }));
 $("minQty").addEventListener("input", (e) => setOptions({ ...opts, minQty: qtyOf(Number((e.target as HTMLInputElement).value)) }));
+$("markers").addEventListener("change", (e) => setOptions({ ...opts, showWalls: (e.target as HTMLInputElement).checked }));
 $("walls").addEventListener("change", (e) => setOptions({ ...opts, wallsOnly: (e.target as HTMLInputElement).checked }));
 $("reset").addEventListener("click", () => setOptions(DEFAULTS));
 setOptions(opts);

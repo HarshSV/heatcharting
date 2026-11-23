@@ -12,6 +12,7 @@ import time
 import angel_session
 import heat
 import store
+from walls import WallTracker
 
 EXCHANGE_NSE_CM = 1
 SNAP_QUOTE = 3
@@ -23,6 +24,7 @@ class Hub:
         self.subs: dict[str, set] = {}          # symbol -> queues of connected browsers
         self.tokens: dict[str, str] = {}        # symbol -> Angel token
         self.by_token: dict[str, str] = {}
+        self.trackers: dict[str, WallTracker] = {}
         self.ws = None
         self.connected = False
         self.last_msg = 0.0
@@ -75,7 +77,13 @@ class Hub:
             store.add(symbol, snap)
         except Exception as e:
             print(f"[feed] could not record {symbol}: {e}", flush=True)
-        self._publish(symbol, snap)
+        self._publish(symbol, {**snap, "type": "snap"})
+        try:
+            for ev in self.trackers.setdefault(symbol, WallTracker()).update(snap):
+                store.add_wall(symbol, ev)
+                self._publish(symbol, {**ev, "type": "wall"})
+        except Exception as e:
+            print(f"[feed] wall tracking failed for {symbol}: {e}", flush=True)
 
     def _ws_subscribe(self, token: str) -> None:
         if self.ws and self.connected:
