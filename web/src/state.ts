@@ -10,7 +10,7 @@ export const CHART_TYPES: { id: ChartType; label: string }[] = [
   { id: "baseline", label: "Baseline" },
 ];
 
-export type IndicatorKind = "volume" | "sma" | "ema" | "vwap" | "bb" | "rsi" | "macd" | "atr";
+export type IndicatorKind = "volume" | "sma" | "ema" | "vwap" | "bb" | "rsi" | "macd" | "atr" | "delta" | "cvd";
 
 export interface IndicatorSpec {
   id: string;
@@ -32,6 +32,8 @@ export const INDICATOR_DEFS: Record<IndicatorKind, { label: string; pane: boolea
   rsi: { label: "RSI", pane: true, defaults: { period: 14 } },
   macd: { label: "MACD", pane: true, defaults: { period: 12, period2: 26, period3: 9 } },
   atr: { label: "ATR", pane: true, defaults: { period: 14 } },
+  delta: { label: "Delta (buy - sell)", pane: true, defaults: {} },
+  cvd: { label: "Cumulative delta", pane: true, defaults: {} },
 };
 
 export const PALETTE = ["#3b82f6", "#f59e0b", "#a855f7", "#22d3ee", "#f43f5e", "#84cc16", "#eab308", "#ec4899"];
@@ -43,6 +45,8 @@ export interface Layout {
   /** symbols drawn over the main one, rebased to start at the same price */
   compares: string[];
   hide: { heat: boolean; walls: boolean; indicators: boolean; compares: boolean };
+  /** trade flow drawn on the chart */
+  flow: { footprint: boolean; profile: boolean };
 }
 
 export const DEFAULT_LAYOUT: Layout = {
@@ -51,6 +55,7 @@ export const DEFAULT_LAYOUT: Layout = {
   indicators: [{ id: "volume-0", kind: "volume", color: "#64748b" }],
   compares: [],
   hide: { heat: false, walls: false, indicators: false, compares: false },
+  flow: { footprint: false, profile: false },
 };
 
 export const cloneLayout = (l: Layout): Layout => JSON.parse(JSON.stringify(l)) as Layout;
@@ -59,6 +64,10 @@ export function describe(s: IndicatorSpec): string {
   switch (s.kind) {
     case "volume":
       return "Volume";
+    case "delta":
+      return "Delta";
+    case "cvd":
+      return "CVD";
     case "vwap":
       return "VWAP";
     case "bb":
@@ -106,6 +115,7 @@ export function sanitizeLayout(x: unknown, knownIntervals: string[]): Layout {
     indicators: inds,
     compares: (Array.isArray(o.compares) ? o.compares : []).filter((s): s is string => typeof s === "string" && /^[A-Z0-9&-]{1,20}$/.test(s)).slice(0, 4),
     hide: { heat: h.heat === true, walls: h.walls === true, indicators: h.indicators === true, compares: h.compares === true },
+    flow: { footprint: (o.flow as Layout["flow"] | undefined)?.footprint === true, profile: (o.flow as Layout["flow"] | undefined)?.profile === true },
   };
 }
 

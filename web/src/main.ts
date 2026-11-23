@@ -4,6 +4,7 @@ import { loadAccount, newAccount, order, saveAccount, type Account } from "./pap
 import { clampOptions, wallLine, type HeatOptions } from "./scale";
 import { DEFAULT_LAYOUT, History, cloneLayout, sanitizeLayout, type Layout } from "./state";
 import { INTERVALS, IST } from "./transform";
+import { COLORS, TOOLS, type Tool } from "./draw";
 import { buildToolbar, type App } from "./toolbar";
 import { ChartView } from "./view";
 import "./style.css";
@@ -131,6 +132,7 @@ function showActive() {
   ctxs.forEach((x, i) => x.view.el.classList.toggle("active", i === activeIx && ctxs.length > 1));
   toolbar.refresh();
   showReplay();
+  refreshTools();
 }
 
 // ------------------------------------------------------------------ persistence
@@ -162,6 +164,9 @@ function createView(symbol: string, layout?: Layout): Ctx {
     note: (t) => {
       c.note = t;
       if (c === active()) $("note").textContent = t;
+    },
+    tool: () => {
+      if (c === active()) refreshTools();
     },
     changed: () => {
       c.history.push(c.view.layout);
@@ -356,6 +361,85 @@ function restore(w: Workspace) {
   persist();
   showActive();
 }
+
+// ------------------------------------------------------------------ drawing tools (left side)
+const ICONS: Record<string, string> = {
+  cursor: '<path d="M5 3l12 8-5 1.5L9.5 18z" fill="currentColor"/>',
+  trend: '<path d="M4 18L18 5" stroke="currentColor" stroke-width="1.8" fill="none"/><circle cx="4" cy="18" r="2" fill="currentColor"/><circle cx="18" cy="5" r="2" fill="currentColor"/>',
+  ray: '<path d="M4 17L20 5" stroke="currentColor" stroke-width="1.8" fill="none"/><circle cx="4" cy="17" r="2" fill="currentColor"/><path d="M17 4l4 0 0 4" stroke="currentColor" stroke-width="1.6" fill="none"/>',
+  hline: '<path d="M3 12h18" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2" fill="currentColor"/>',
+  vline: '<path d="M12 3v18" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2" fill="currentColor"/>',
+  rect: '<rect x="4" y="6" width="16" height="12" stroke="currentColor" stroke-width="1.8" fill="none" rx="1"/>',
+  fib: '<path d="M3 5h18M3 10h18M3 14h18M3 19h18" stroke="currentColor" stroke-width="1.4"/>',
+  text: '<path d="M6 6h12M12 6v13" stroke="currentColor" stroke-width="2" fill="none"/>',
+  measure: '<path d="M4 17L17 4l3 3L7 20z" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M8 13l2 2M11 10l2 2M14 7l2 2" stroke="currentColor" stroke-width="1.4"/>',
+  magnet: '<path d="M6 4v8a6 6 0 0 0 12 0V4h-4v8a2 2 0 0 1-4 0V4z" stroke="currentColor" stroke-width="1.6" fill="none"/>',
+  eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" stroke="currentColor" stroke-width="1.6" fill="none"/><circle cx="12" cy="12" r="3" fill="currentColor"/>',
+  trash: '<path d="M5 7h14M9 7V4h6v3M7 7l1 13h8l1-13" stroke="currentColor" stroke-width="1.6" fill="none"/>',
+};
+const svg = (n: string) => `<svg viewBox="0 0 24 24" width="20" height="20">${ICONS[n]}</svg>`;
+const toolsEl = $("tools");
+function buildTools() {
+  const btn = (id: string, title: string, icon: string, act: () => void) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "dt";
+    b.dataset.id = id;
+    b.title = title;
+    b.innerHTML = svg(icon);
+    b.addEventListener("click", act);
+    toolsEl.appendChild(b);
+  };
+  for (const t of TOOLS) btn(t.id, `${t.label}: ${t.hint}`, t.id, () => {
+    active().view.setTool(t.id as Tool);
+    refreshTools();
+  });
+  const hr = document.createElement("div");
+  hr.className = "dsep";
+  toolsEl.appendChild(hr);
+  btn("magnet", "Magnet: snap to the open, high, low and close of a candle", "magnet", () => {
+    const v = active().view;
+    v.setMagnet(!v.drawState.magnet);
+    refreshTools();
+  });
+  btn("hide", "Show or hide all drawings", "eye", () => {
+    const v = active().view;
+    v.setDrawingsHidden(!v.drawState.hidden);
+    refreshTools();
+  });
+  btn("delete", "Delete the selected drawing (Delete key). Ctrl+Z undoes a drawing change", "trash", () => {
+    const v = active().view;
+    if (v.drawState.selected) v.deleteSelectedDrawing();
+    else if (v.drawState.count && confirm("Remove all drawings on this chart?")) v.clearDrawings();
+    refreshTools();
+  });
+  const sw = document.createElement("div");
+  sw.className = "swatches";
+  for (const c of COLORS) {
+    const s = document.createElement("button");
+    s.type = "button";
+    s.className = "sw";
+    s.dataset.c = c;
+    s.style.background = c;
+    s.title = "Drawing colour";
+    s.addEventListener("click", () => {
+      active().view.setDrawingColor(c);
+      refreshTools();
+    });
+    sw.appendChild(s);
+  }
+  toolsEl.appendChild(sw);
+}
+function refreshTools() {
+  if (!ctxs.length) return;
+  const st = active().view.drawState;
+  toolsEl.querySelectorAll<HTMLElement>(".dt").forEach((b) => {
+    const id = b.dataset.id!;
+    b.classList.toggle("on", id === st.tool || (id === "magnet" && st.magnet) || (id === "hide" && st.hidden));
+  });
+  toolsEl.querySelectorAll<HTMLElement>(".sw").forEach((b) => b.classList.toggle("on", b.dataset.c === st.color));
+}
+buildTools();
 
 // ------------------------------------------------------------------ replay bar
 function showReplay() {

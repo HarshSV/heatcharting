@@ -53,10 +53,12 @@ export const snapshots = (symbol: string, minutes = 90) =>
   get<{ snapshots: Snapshot[]; note?: string }>(`/api/snapshots?symbol=${encodeURIComponent(symbol)}&minutes=${minutes}`);
 export const walls = (symbol: string, minutes = 90) =>
   get<{ events: WallEvent[] }>(`/api/walls?symbol=${encodeURIComponent(symbol)}&minutes=${minutes}`).then((r) => r.events);
+export const flow = (symbol: string, minutes = 120) =>
+  get<{ events: [number, number, number, number][] }>(`/api/flow?symbol=${encodeURIComponent(symbol)}&minutes=${minutes}`).then((r) => r.events);
 export const health = () => get<{ angel_configured: boolean; feed_connected: boolean; last_message_age_s: number | null }>("/api/health");
 
 /** Live messages for one symbol: depth snapshots and wall events. Reconnects by itself until close() is called. */
-export function live(symbol: string, on: { snap: (s: Snapshot) => void; wall: (w: WallEvent) => void }, onState: (open: boolean) => void) {
+export function live(symbol: string, on: { snap: (s: Snapshot) => void; wall: (w: WallEvent) => void; flow: (f: [number, number, number, number]) => void }, onState: (open: boolean) => void) {
   let ws: WebSocket | null = null;
   let stopped = false;
   let delay = 1000;
@@ -70,6 +72,10 @@ export function live(symbol: string, on: { snap: (s: Snapshot) => void; wall: (w
     ws.onmessage = (e) => {
       const m = JSON.parse(e.data) as { type?: string };
       if (m.type === "wall") on.wall(m as unknown as WallEvent);
+      else if (m.type === "flow") {
+        const f = m as unknown as { t: number; price: number; qty: number; side: number };
+        on.flow([f.t, f.price, f.qty, f.side]);
+      }
       else on.snap(m as unknown as Snapshot);
     };
     ws.onclose = () => {

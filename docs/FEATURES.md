@@ -9,20 +9,24 @@ Written from our own requirements for an NSE order-flow chart. Nothing here is c
 - Wall tracking: appeared / pulled / eaten, marked on the chart, logged in the side panel, stored and streamed (inferred from five levels, see README)
 - Top toolbar: timeframes (1m to weekly), chart types, indicators (volume, SMA, EMA, VWAP, Bollinger, RSI, MACD, ATR), compare, visibility,
   price alerts, replay, undo and redo, saved layouts, 1 / 2 / 4 chart grid, theme, picture, CSV export, paper trading
+- Drawing tools: trend line, ray, horizontal and vertical line, rectangle, Fibonacci retracement, text, measure; select, move, recolour, delete, undo and redo, magnet, hide; saved per symbol
+- Trade flow: footprint, volume profile (with point of control), delta and cumulative delta panes, estimated from the live depth feed
+- Zoom buttons and jump to the latest bar
 - Live order-book ladder
 - Candle loading that survives Angel rate limits (cached for 20 s, retried, and the live feed never waits for it)
 - Depth recording (SQLite, 7 days) and replay of the last session
 - Live / quiet / market-closed status
 
 ## Next, in this order
-1. **Trade flow:** buy and sell volume per price (a footprint view) from the tick stream.
-2. **More intervals:** 5-minute and 15-minute candles, and a day-session switch.
-3. **Deeper depth:** a second feed (20 or 200 levels) behind the same interface, once a data subscription is chosen.
-4. **Option chain** for NSE index and stock options.
-5. **Watchlist and alerts** on size appearing, being pulled, or price touching a wall.
-6. **Strategy tester and screener** (largest piece, last).
+1. **More intervals:** 5-minute and 15-minute candles, and a day-session switch.
+2. **Deeper depth:** a second feed (20 or 200 levels) behind the same interface, once a data subscription is chosen.
+3. **Option chain** for NSE index and stock options.
+4. **Watchlist and alerts** on size appearing, being pulled, or price touching a wall.
+5. **Strategy tester and screener** (largest piece, last).
 
 ## Known limits
+- Trade flow is an estimate from one-second readings (lumped trades, side from the best bid and ask); it is not a trade-by-trade tape.
+- Drawings are not drawn on the lower indicator panes, and Ctrl+Z undoes drawing changes only (the toolbar's undo is for chart settings).
 - Alerts are checked in the browser, so they only fire while the page is open (server-side alerts are a later step).
 - Paper trading uses the last price seen by the page; it does not model slippage, queue position, charges or margin.
 - Compare rebases to the first bar loaded, so a long history can stretch the price axis.

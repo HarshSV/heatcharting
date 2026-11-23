@@ -20,6 +20,8 @@ def _con() -> sqlite3.Connection:
     con.execute("CREATE INDEX IF NOT EXISTS snaps_sym_t ON snaps (sym, t)")
     con.execute("CREATE TABLE IF NOT EXISTS walls (sym TEXT NOT NULL, t INTEGER NOT NULL, kind TEXT NOT NULL, side TEXT NOT NULL, price REAL NOT NULL, qty INTEGER, held_s INTEGER)")
     con.execute("CREATE INDEX IF NOT EXISTS walls_sym_t ON walls (sym, t)")
+    con.execute("CREATE TABLE IF NOT EXISTS flow (sym TEXT NOT NULL, t INTEGER NOT NULL, price REAL NOT NULL, qty INTEGER NOT NULL, side INTEGER NOT NULL)")
+    con.execute("CREATE INDEX IF NOT EXISTS flow_sym_t ON flow (sym, t)")
     return con
 
 
@@ -47,6 +49,7 @@ def prune(days: int = KEEP_DAYS) -> int:
     cutoff = int((time.time() - days * 86400) * 1000)
     with _lock, _con() as con:
         con.execute("DELETE FROM walls WHERE t<?", (cutoff,))
+        con.execute("DELETE FROM flow WHERE t<?", (cutoff,))
         return con.execute("DELETE FROM snaps WHERE t<?", (cutoff,)).rowcount
 
 
@@ -59,3 +62,15 @@ def walls_since(sym: str, t0: int, limit: int = 2000) -> list[dict]:
     with _lock, _con() as con:
         rows = con.execute("SELECT t, kind, side, price, qty, held_s FROM walls WHERE sym=? AND t>=? ORDER BY t LIMIT ?", (sym, t0, limit)).fetchall()
     return [{"t": t, "kind": k, "side": sd, "price": p, "qty": q, "held_s": h} for t, k, sd, p, q, h in rows]
+
+
+def add_flow(sym: str, ev: dict) -> None:
+    with _lock, _con() as con:
+        con.execute("INSERT INTO flow VALUES (?,?,?,?,?)", (sym, ev["t"], ev["price"], ev["qty"], ev["side"]))
+
+
+def flow_since(sym: str, t0: int, limit: int = 80000) -> list[list]:
+    """Flow events as compact rows [t, price, qty, side], oldest first."""
+    with _lock, _con() as con:
+        rows = con.execute("SELECT t, price, qty, side FROM flow WHERE sym=? AND t>=? ORDER BY t LIMIT ?", (sym, t0, limit)).fetchall()
+    return [list(r) for r in rows]

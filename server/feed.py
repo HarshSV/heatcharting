@@ -12,6 +12,7 @@ import time
 import angel_session
 import heat
 import store
+from flow import FlowTracker
 from walls import WallTracker
 
 EXCHANGE_NSE_CM = 1
@@ -25,6 +26,7 @@ class Hub:
         self.tokens: dict[str, str] = {}        # symbol -> Angel token
         self.by_token: dict[str, str] = {}
         self.trackers: dict[str, WallTracker] = {}
+        self.flows: dict[str, FlowTracker] = {}
         self.ws = None
         self.connected = False
         self.last_msg = 0.0
@@ -78,6 +80,13 @@ class Hub:
         except Exception as e:
             print(f"[feed] could not record {symbol}: {e}", flush=True)
         self._publish(symbol, {**snap, "type": "snap"})
+        try:
+            fl = self.flows.setdefault(symbol, FlowTracker()).update(snap)
+            if fl:
+                store.add_flow(symbol, fl)
+                self._publish(symbol, {**fl, "type": "flow"})
+        except Exception as e:
+            print(f"[feed] flow estimate failed for {symbol}: {e}", flush=True)
         try:
             for ev in self.trackers.setdefault(symbol, WallTracker()).update(snap):
                 store.add_wall(symbol, ev)

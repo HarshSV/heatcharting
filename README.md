@@ -23,9 +23,18 @@ This is an original implementation (Python server + TypeScript web app). It cont
 | Layouts | Save and load named layouts; 1, 2 or 4 charts on screen, each with its own symbol, timeframe and indicators |
 | Theme, picture, export | Dark and light theme; save a PNG of the chart with the heat on it; export the candles as CSV |
 | Paper trading | **Trade** button: practise buys and sells at the live price with a cash balance, positions, realised and open P&L. Practice only: no order is ever sent to a broker |
+| Drawing tools | Left toolbar: cursor, trend line, ray, horizontal line, vertical line, rectangle, Fibonacci retracement, text note and a measure tool (price, percentage, bars and time of a move). Drawings are kept in time and price, so they follow zooming and panning; select, drag, recolour, delete (Delete key), undo and redo (Ctrl+Z, Ctrl+Y), magnet to candle highs and lows, hide all. Saved per symbol in this browser |
+| Trade flow | **Flow** menu: footprint (sell x buy at each price inside each bar, with the bar's delta), volume profile (volume at price in view, buy and sell split, point of control marked), plus Delta and Cumulative-delta panes. Zoom buttons (+ and -) and a jump-to-latest button sit on the right of the toolbar |
 | Order book panel | The live best-five ladder with quantity bars |
 | Recording | Every snapshot is stored in SQLite (7 days), so a refresh or a closed market still shows the last recorded session |
 | Honest status | "Live", "No update for N s", or "Waiting for the feed (market closed?)"; unknown values are never shown as zero |
+
+## How trade flow is estimated
+
+Angel One sends one reading about every second with the day's cumulative volume. The volume added between two readings is placed at the last price and
+called a **buy** when that price is at or above the previous best ask, a **sell** at or below the previous best bid, otherwise by the price tick, then by
+the previous side (and **unclassified** if none applies). Several trades inside one second are lumped together, so this is a guide to who was pushing, not
+a tape of every trade. Nothing is invented: a reading without volume or price makes no event, and bars from before recording began show no delta (unknown, not zero).
 
 ## The data limit you should know about
 
@@ -55,9 +64,9 @@ Tests: `pytest tests` (server) and `cd web && npm test` (heat rules). Type check
 
 ```
 server/   app.py (API + WebSocket) · feed.py (Angel depth socket) · angel.py (search, candles) · angel_session.py (shared login)
-          heat.py (pure functions) · walls.py (wall tracker) · store.py (SQLite)
+          heat.py (pure functions) · walls.py (wall tracker) · flow.py (trade flow estimate) · store.py (SQLite)
 web/      src/main.ts · heatmap.ts (canvas heat layer on Lightweight Charts) · scale.ts (colour and wall rules) · api.ts · style.css
-tests/    test_server.py · test_walls.py
+tests/    test_server.py · test_walls.py · test_flow.py
 docs/     FEATURES.md (what is built, what is next)
 ```
 

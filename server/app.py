@@ -5,6 +5,7 @@
   GET  /api/candles?symbol=&interval=&days=  candles (Angel One: ONE_MINUTE .. ONE_DAY; 4h and weekly are built from 1h and daily in the browser)
   GET  /api/snapshots?symbol=&minutes=  recorded depth snapshots (best five bids and asks over time)
   GET  /api/walls?symbol=&minutes=    wall events: a large resting order appeared, was pulled, or was eaten
+  GET  /api/flow?symbol=&minutes=     estimated trade flow: price, quantity and side of the volume between snapshots
   WS   /ws?symbol=                    live messages: {"type":"snap",...} depth snapshots and {"type":"wall",...} wall events
 
 Run:  python server/app.py   (serves the built web app from web/dist as well). Binds to 127.0.0.1 unless HEATCHART_HOST says otherwise:
@@ -92,6 +93,16 @@ def walls(symbol: str, minutes: int = 90):
     if last is None:
         return {"symbol": s["symbol"], "events": []}
     return {"symbol": s["symbol"], "events": store.walls_since(s["symbol"], last - max(1, min(minutes, 600)) * 60_000)}
+
+
+@app.get("/api/flow")
+def flow(symbol: str, minutes: int = 120):
+    """Estimated trade flow [t, price, qty, side] (side 1 buy, -1 sell, 0 unclassified) for the last `minutes` of the latest recorded session."""
+    s = _stock(symbol)
+    last = store.latest_time(s["symbol"])
+    if last is None:
+        return {"symbol": s["symbol"], "events": []}
+    return {"symbol": s["symbol"], "events": store.flow_since(s["symbol"], last - max(1, min(minutes, 600)) * 60_000)}
 
 
 @app.websocket("/ws")

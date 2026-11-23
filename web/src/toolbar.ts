@@ -194,6 +194,23 @@ export function buildToolbar(root: HTMLElement, app: App): Toolbar {
     p.querySelectorAll<HTMLInputElement>("input[data-h]").forEach((i) => i.addEventListener("change", () => app.active().setHide({ [i.dataset.h!]: !i.checked } as never)));
   });
 
+  // ---- trade flow
+  const flow = pop(g3, "Flow", "Trade flow: footprint, volume profile, delta", (p) => {
+    const v = app.active();
+    const f = v.layout.flow;
+    p.innerHTML = `<h4>Trade flow</h4>
+      <p class="hint">Estimated from the live depth feed (about one reading a second): the volume added between readings is placed at the last price and called a buy or a sell from the best bid and ask. Several trades in one second are lumped together, so read it as a guide, not a tape. ${v.flowCount ? `${v.flowCount.toLocaleString("en-IN")} readings so far.` : "None recorded yet for this session."}</p>
+      <label class="ck"><input type="checkbox" id="ffp" ${f.footprint ? "checked" : ""} /> Footprint <small>(sell &times; buy at each price, zoom in)</small></label>
+      <label class="ck"><input type="checkbox" id="fpr" ${f.profile ? "checked" : ""} /> Volume profile <small>(volume at price in view)</small></label>
+      <h5>Panes</h5>
+      <div class="grid2"><button class="mi" id="fdl">+ Delta</button><button class="mi" id="fcv">+ Cumulative delta</button></div>`;
+    p.querySelector("#ffp")!.addEventListener("change", (e) => { v.setFlow({ footprint: (e.target as HTMLInputElement).checked }); flow.refresh(); });
+    p.querySelector("#fpr")!.addEventListener("change", (e) => { v.setFlow({ profile: (e.target as HTMLInputElement).checked }); flow.refresh(); });
+    const add = (kind: "delta" | "cvd") => { if (!v.layout.indicators.some((i) => i.kind === kind)) v.addIndicator(kind); flow.close(); };
+    p.querySelector("#fdl")!.addEventListener("click", () => add("delta"));
+    p.querySelector("#fcv")!.addEventListener("click", () => add("cvd"));
+  });
+
   // ---- heat controls
   const heat = pop(g3, "Heat", "Heat colour controls", (p) => {
     const o = app.heatOpts();
@@ -293,7 +310,22 @@ export function buildToolbar(root: HTMLElement, app: App): Toolbar {
   shotBtn.title = "Save a picture of the chart";
   shotBtn.innerHTML = "&#128247;";
   shotBtn.addEventListener("click", () => app.screenshot());
-  right.append(themeBtn, shotBtn);
+  const zbtn = (label: string, title: string, act: () => void) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "tb";
+    b.title = title;
+    b.innerHTML = label;
+    b.addEventListener("click", act);
+    return b;
+  };
+  right.append(
+    zbtn("&minus;", "Zoom out", () => app.active().zoom(1.5)),
+    zbtn("&#43;", "Zoom in", () => app.active().zoom(1 / 1.5)),
+    zbtn("&#9197;", "Jump to the latest bar", () => app.active().latest()),
+    themeBtn,
+    shotBtn,
+  );
   const moreMenu = pop(right, "&#8943;", "More", (p) => {
     p.innerHTML = `<button class="mi" id="csv">Export candles (CSV)</button><button class="mi" id="rst">Reset everything saved here</button>`;
     p.querySelector("#csv")!.addEventListener("click", () => { app.exportCsv(); moreMenu.close(); });

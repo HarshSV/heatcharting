@@ -17,7 +17,11 @@ import {
 } from "lightweight-charts";
 import * as api from "./api";
 import type { Alert } from "./alerts";
+import { DrawLayer, type Drawing, type Tool } from "./draw";
+import { deltaSeries, barIndex, type FlowEvent } from "./flow";
+import { FlowLayer } from "./flowlayer";
 import { HeatLayer } from "./heatmap";
+import { TimeMap } from "./timemap";
 import { atr, bollinger, closes, ema, macd, rsi, sma, vwap, type Bar, type Series } from "./indicators";
 import { DEFAULTS, type HeatOptions } from "./scale";
 import { cloneLayout, DEFAULT_LAYOUT, describe, INDICATOR_DEFS, newIndicator, type ChartType, type IndicatorKind, type IndicatorSpec, type Layout } from "./state";
@@ -32,6 +36,8 @@ export interface ViewHooks {
   /** the user changed something that belongs in the layout */
   changed(): void;
   note(text: string): void;
+  /** a drawing tool finished and the tool went back to the cursor */
+  tool(t: Tool): void;
 }
 
 const UP = "#22c55e";
@@ -59,6 +65,10 @@ export class ChartView {
   private box: HTMLElement;
   private legend: HTMLElement;
   private heat: HeatLayer;
+  private flowLayer: FlowLayer;
+  private drawLayer: DrawLayer;
+  private tm = new TimeMap();
+  private flowTimer = 0;
   private main: ISeriesApi<SeriesType> | null = null;
   private raw: Bar[] = [];
   private runs: IndicatorRun[] = [];
@@ -74,7 +84,7 @@ export class ChartView {
   constructor(container: HTMLElement, private hooks: ViewHooks) {
     this.el = container;
     container.classList.add("cv");
-    container.innerHTML = '<div class="cv-chart"></div><canvas class="cv-heat"></canvas><div class="cv-legend"></div>';
+    container.innerHTML = '<div class="cv-chart"></div><canvas class="cv-heat"></canvas><canvas class="cv-flow"></canvas><canvas class="cv-draw"></canvas><div class="cv-legend"></div>';
     this.box = container.querySelector(".cv-chart") as HTMLElement;
     this.legend = container.querySelector(".cv-legend") as HTMLElement;
     this.chart = createChart(this.box, {
@@ -85,11 +95,24 @@ export class ChartView {
       crosshair: { mode: CrosshairMode.Normal },
     });
     this.heat = new HeatLayer(container.querySelector(".cv-heat") as HTMLCanvasElement, this.chart);
+    this.flowLayer = new FlowLayer(container.querySelector(".cv-flow") as HTMLCanvasElement, this.chart, this.tm);
+    this.drawLayer = new DrawLayer(container.querySelector(".cv-draw") as HTMLCanvasElement, container, this.chart, this.tm, {
+      changed: (list) => this.saveDrawings(list),
+      tool: (t) => this.hooks.tool(t),
+      askText: () => window.prompt("Text for the note:"),
+      ohlcAt: (t) => {
+        const i = barIndex(this.raw.map((b) => b.time), t);
+        const b = i >= 0 ? this.raw[i] : null;
+        return b ? [b.open, b.high, b.low, b.close] : null;
+      },
+    });
     new ResizeObserver(() => {
       const w = this.box.clientWidth;
       const h = this.box.clientHeight;
       this.chart.applyOptions({ width: w, height: h });
       this.heat.resize(w, h);
+      this.flowLayer.resize(w, h);
+      this.drawLayer.resize(w, h);
     }).observe(this.box);
     this.chart.subscribeCrosshairMove((p) => this.updateLegend(p.seriesData as Map<ISeriesApi<SeriesType>, unknown>));
     this.timers.push(window.setInterval(() => void this.refreshBars(), 60_000));
@@ -114,6 +137,8 @@ export class ChartView {
     this.hooks.status("Loading...", "warn");
     this.heat.setSnapshots([]);
     this.heat.setEvents([]);
+    this.flowLayer.setEvents([]);
+    this.drawLayer.setDrawings(this.loadDrawings(sym));
     let snaps: Awaited<ReturnType<typeof api.snapshots>>;
     try {
       snaps = await api.snapshots(sym, 90);
@@ -126,6 +151,8 @@ export class ChartView {
     const events = await api.walls(sym, 90).catch(() => []);
     if (my !== this.seq) return;
     this.heat.setEvents(events);
+    this.flowLayer.setEvents(((await api.flow(sym, 120).catch(() => [])) as FlowEvent[]).slice());
+    if (my !== this.seq) return;
     this.hooks.note(snaps.snapshots.length ? `${snaps.snapshots.length.toLocaleString("en-IN")} depth snapshots loaded` : (snaps.note ?? "No depth recorded yet for this symbol."));
     this.hooks.snap(snaps.snapshots[snaps.snapshots.length - 1] ?? { t: 0, ltp: null, bids: [], asks: [] });
     for (const e of events) this.hooks.wall(e);
@@ -150,6 +177,11 @@ export class ChartView {
           if (my !== this.seq) return;
           this.heat.addEvent(w);
           this.hooks.wall(w);
+        },
+        flow: (f) => {
+          if (my !== this.seq) return;
+          this.flowLayer.add(f);
+          this.scheduleFlowRuns();
         },
       },
       (open) => {
@@ -301,6 +333,8 @@ export class ChartView {
     else if (t === "area") this.main = this.chart.addSeries(AreaSeries, { lineColor: "#3b82f6", topColor: "rgba(59,130,246,0.35)", bottomColor: "rgba(59,130,246,0.02)", ...base });
     else this.main = this.chart.addSeries(BaselineSeries, { topLineColor: UP, bottomLineColor: DOWN, topFillColor1: "rgba(34,197,94,0.25)", topFillColor2: "rgba(34,197,94,0.02)", bottomFillColor1: "rgba(239,68,68,0.02)", bottomFillColor2: "rgba(239,68,68,0.25)", ...base });
     this.heat.setSeries(this.main);
+    this.flowLayer.setSeries(this.main);
+    this.drawLayer.setSeries(this.main);
     this.setAlertLines(this.alerts);
   }
 
@@ -344,6 +378,13 @@ export class ChartView {
       }
       case "atr":
         return { spec, series: [line(spec.color, pane, 2)], compute: (b) => [atr(b, n)], point: (i, b, v) => plain(i, b, v) };
+      case "delta": {
+        const s = add(HistogramSeries, { lastValueVisible: false, priceLineVisible: false }, pane);
+        return { spec, series: [s], compute: (b) => [deltaSeries(this.flowLayer.all, b.map((x) => x.time), this.interval.sec, this.flowCutoff()).delta],
+          point: (i, b, v) => ({ time: b[i].time, value: v, color: v >= 0 ? "rgba(20,184,166,0.7)" : "rgba(244,114,70,0.7)" }) };
+      }
+      case "cvd":
+        return { spec, series: [line(spec.color, pane, 2)], compute: (b) => [deltaSeries(this.flowLayer.all, b.map((x) => x.time), this.interval.sec, this.flowCutoff()).cvd], point: (i, b, v) => plain(i, b, v) };
     }
   }
 
@@ -375,7 +416,11 @@ export class ChartView {
       r.series.forEach((s, k) => s.setData(arrays[k].flatMap((v, i) => (v === null ? [] : [r.point(i, bars, v, k)])) as never));
     }
     this.heat.setBars(bars.map((b) => b.time), this.interval.sec);
-    this.heat.setCutoff(this.replayState.active && bars.length ? (bars[bars.length - 1].time - IST + this.interval.sec) * 1000 : null);
+    this.tm.set(bars.map((b) => b.time), this.interval.sec);
+    this.heat.setCutoff(this.flowCutoff());
+    this.flowLayer.setCutoff(this.flowCutoff());
+    this.flowLayer.setShow(this.layout.flow.footprint, this.layout.flow.profile);
+    this.drawLayer.invalidate();
     this.applyHeatVisibility();
     this.renderCompares();
     this.updateLegend(new Map());
@@ -402,6 +447,7 @@ export class ChartView {
     } else if (start > last.time) {
       this.raw.push({ time: start, open: price, high: price, low: price, close: price, volume: null });
       this.heat.setBars(this.raw.map((b) => b.time), iv.sec);
+      this.tm.set(this.raw.map((b) => b.time), iv.sec);
     } else return;
     const bars = this.raw;
     const i = bars.length - 1;
@@ -424,6 +470,88 @@ export class ChartView {
     const day = Math.floor(b[b.length - 1].time / 86400);
     for (let i = b.length - 1; i >= 0; i--) if (Math.floor(b[i].time / 86400) < day) return b[i].close;
     return null;
+  }
+
+  // ------------------------------------------------------------------ trade flow and drawings
+  /** In replay, nothing after the replay cursor counts. */
+  private flowCutoff(): number | null {
+    const bars = this.visibleRaw();
+    return this.replayState.active && bars.length ? (bars[bars.length - 1].time - IST + this.interval.sec) * 1000 : null;
+  }
+
+  /** New flow arrives every second; the delta panes are rebuilt at most about once a second. */
+  private scheduleFlowRuns() {
+    if (this.flowTimer) return;
+    this.flowTimer = window.setTimeout(() => {
+      this.flowTimer = 0;
+      const bars = this.visibleRaw();
+      for (const r of this.runs) {
+        if (r.spec.kind !== "delta" && r.spec.kind !== "cvd") continue;
+        const arrays = r.compute(bars);
+        r.series.forEach((s, k) => s.setData(arrays[k].flatMap((v, i) => (v === null ? [] : [r.point(i, bars, v, k)])) as never));
+      }
+    }, 1000);
+  }
+
+  /** Zoom the time axis around the right edge, so the latest bars stay in view. factor < 1 zooms in. */
+  zoom(factor: number) {
+    const r = this.chart.timeScale().getVisibleLogicalRange();
+    if (!r) return;
+    const w = Math.max(6, (r.to - r.from) * factor);
+    this.chart.timeScale().setVisibleLogicalRange({ from: r.to - w, to: r.to });
+  }
+  latest() {
+    this.chart.timeScale().scrollToRealTime();
+  }
+
+  setFlow(p: Partial<Layout["flow"]>) {
+    this.layout.flow = { ...this.layout.flow, ...p };
+    this.flowLayer.setShow(this.layout.flow.footprint, this.layout.flow.profile);
+    this.hooks.changed();
+  }
+  get flowCount() {
+    return this.flowLayer.all.length;
+  }
+
+  private loadDrawings(sym: string): Drawing[] {
+    try {
+      const v = JSON.parse(localStorage.getItem(`heatcharting.drawings.${sym}`) ?? "[]");
+      return Array.isArray(v) ? v.filter((d) => d && typeof d.id === "string" && Array.isArray(d.pts) && d.pts.every((p: { t: unknown; p: unknown }) => num(p.t) && num(p.p))) : [];
+    } catch {
+      return [];
+    }
+  }
+  private saveDrawings(list: Drawing[]) {
+    if (this.symbol) localStorage.setItem(`heatcharting.drawings.${this.symbol}`, JSON.stringify(list));
+    this.hooks.tool(this.drawLayer.tool);
+  }
+  setTool(t: Tool) {
+    this.drawLayer.setTool(t);
+  }
+  get drawState() {
+    const d = this.drawLayer;
+    return { tool: d.tool, magnet: d.magnet, hidden: d.hidden, count: d.drawings.length, selected: d.selected != null, color: d.currentColor };
+  }
+  setMagnet(on: boolean) {
+    this.drawLayer.magnet = on;
+  }
+  setDrawingsHidden(h: boolean) {
+    this.drawLayer.setHidden(h);
+  }
+  setDrawingColor(c: string) {
+    this.drawLayer.setColor(c);
+  }
+  clearDrawings() {
+    this.drawLayer.clear();
+  }
+  deleteSelectedDrawing() {
+    this.drawLayer.deleteSelected();
+  }
+  undoDrawing() {
+    this.drawLayer.undoDrawing();
+  }
+  redoDrawing() {
+    this.drawLayer.redoDrawing();
   }
 
   // ------------------------------------------------------------------ compare
@@ -542,6 +670,8 @@ export class ChartView {
     const shot = this.chart.takeScreenshot();
     const ctx = shot.getContext("2d")!;
     ctx.drawImage(this.heat.element, 0, 0, shot.width, shot.height);
+    ctx.drawImage(this.el.querySelector(".cv-flow") as HTMLCanvasElement, 0, 0, shot.width, shot.height);
+    ctx.drawImage(this.el.querySelector(".cv-draw") as HTMLCanvasElement, 0, 0, shot.width, shot.height);
     return shot;
   }
 
