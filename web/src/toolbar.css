@@ -83,3 +83,10 @@
 .sw.on { outline: 2px solid var(--text); outline-offset: 1px; }
 .cv-flow, .cv-draw { position: absolute; left: 0; top: 0; pointer-events: none; }
 .cv-draw { z-index: 8; }
+
+/* ---- icon buttons ---- */
+.tb { display: inline-flex; align-items: center; gap: 4px; min-height: 30px; }
+.tb svg { display: block; flex: none; }
+.tb .n { font-size: 12px; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tb.iv { min-width: 30px; justify-content: center; font-weight: 500; }
+.toolbar .tg { gap: 1px; }

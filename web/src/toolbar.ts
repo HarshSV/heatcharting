@@ -38,6 +38,34 @@ export interface App {
   priceOf(symbol: string): number | null;
 }
 
+const SV = (inner: string) => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
+export const TB_ICON: Record<string, string> = {
+  plus: SV('<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>'),
+  candles: SV('<path d="M7 4v3M7 17v3M17 6v3M17 18v2"/><rect x="5" y="7" width="4" height="10" rx="0.5"/><rect x="15" y="9" width="4" height="9" rx="0.5"/>'),
+  heikin: SV('<path d="M6 5v2M6 17v2M12 8v2M12 19v1M18 4v2M18 15v3"/><rect x="4" y="7" width="4" height="10" rx="0.5"/><rect x="10" y="10" width="4" height="9" rx="0.5"/><rect x="16" y="6" width="4" height="9" rx="0.5"/>'),
+  bars: SV('<path d="M7 4v16M4 8h3M7 15h3M17 6v14M14 10h3M17 17h3"/>'),
+  line: SV('<path d="M3 17l5-6 4 3 8-9"/>'),
+  area: SV('<path d="M3 17l5-6 4 3 8-9v13H3z" fill="currentColor" fill-opacity="0.18"/><path d="M3 17l5-6 4 3 8-9"/>'),
+  baseline: SV('<path d="M3 12h18" stroke-dasharray="2 2"/><path d="M3 16l5-6 4 3 8-7"/>'),
+  indicators: SV('<path d="M3 18l5-7 4 4 5-9 4 4"/><path d="M3 21h18" opacity="0.5"/>'),
+  eye: SV('<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
+  flow: SV('<path d="M5 20V10M10 20V4M15 20v-7M20 20V8"/>'),
+  heat: SV('<rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M3 9h18M3 14h18M9 4v16M15 4v16" opacity="0.55"/><rect x="9" y="9" width="6" height="5" fill="currentColor" fill-opacity="0.35" stroke="none"/>'),
+  bell: SV('<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/>'),
+  replay: SV('<path d="M5 5v14"/><path d="M19 6l-9 6 9 6z"/>'),
+  undo: SV('<path d="M9 7L4 12l5 5"/><path d="M4 12h10a6 6 0 0 1 0 12" transform="translate(0 -4)"/>'),
+  redo: SV('<path d="M15 7l5 5-5 5"/><path d="M20 12H10a6 6 0 0 0 0 12" transform="translate(0 -4)"/>'),
+  grid: SV('<rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/>'),
+  save: SV('<path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/>'),
+  sun: SV('<circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4"/>'),
+  moon: SV('<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>'),
+  camera: SV('<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>'),
+  more: SV('<circle cx="5" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="19" cy="12" r="1.3" fill="currentColor"/>'),
+  zoomIn: SV('<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5M11 8v6M8 11h6"/>'),
+  zoomOut: SV('<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5M8 11h6"/>'),
+  latest: SV('<path d="M5 6l7 6-7 6M13 6l7 6-7 6"/>'),
+  caret: SV('<path d="M7 10l5 5 5-5"/>'),
+};
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] as string);
 const inr = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 2, minimumFractionDigits: 2 });
 
@@ -47,7 +75,7 @@ class Popover {
   constructor(parent: HTMLElement, label: string, title: string, private build: (p: HTMLElement) => void, private align: "left" | "right" = "left", cls = "") {
     const wrap = document.createElement("div");
     wrap.className = `pop ${cls}`;
-    wrap.innerHTML = `<button type="button" class="tb" title="${esc(title)}">${label}</button><div class="panel" hidden></div>`;
+    wrap.innerHTML = `<button type="button" class="tb" title="${esc(title)}" aria-label="${esc(title)}">${label}</button><div class="panel" hidden></div>`;
     parent.appendChild(wrap);
     this.btn = wrap.querySelector("button") as HTMLButtonElement;
     this.panel = wrap.querySelector(".panel") as HTMLElement;
@@ -110,7 +138,7 @@ export function buildToolbar(root: HTMLElement, app: App): Toolbar {
 
   // ---- compare
   const g1 = group();
-  const compare = pop(g1, "&#43; Compare", "Compare with another symbol", (p) => {
+  const compare = pop(g1, TB_ICON.plus, "Compare with another symbol", (p) => {
     const v = app.active();
     p.innerHTML = `<h4>Compare</h4><p class="hint">Draws another symbol on this chart, rebased to start at the same price.</p>
       <input class="in" id="cmpq" placeholder="Search a symbol" autocomplete="off" spellcheck="false" /><ul class="list" id="cmpres"></ul>
@@ -154,7 +182,7 @@ export function buildToolbar(root: HTMLElement, app: App): Toolbar {
     g2.appendChild(b);
     return b;
   });
-  const more = pop(g2, "&#9662;", "More timeframes", (p) => {
+  const more = pop(g2, TB_ICON.caret, "More timeframes", (p) => {
     const cur = app.active().layout.interval;
     p.innerHTML = INTERVALS.filter((i) => !quick.includes(i.id)).map((i) => `<button class="mi ${cur === i.id ? "sel" : ""}" data-iv="${i.id}">${i.label === "W" ? "Weekly" : i.label === "3m" ? "3 minutes" : "30 minutes"}</button>`).join("");
     p.querySelectorAll<HTMLElement>("[data-iv]").forEach((b) => b.addEventListener("click", () => { void app.active().setInterval(b.dataset.iv!); more.close(); }));
@@ -163,14 +191,14 @@ export function buildToolbar(root: HTMLElement, app: App): Toolbar {
   sep();
   // ---- chart type
   const g3 = group();
-  const type = pop(g3, "Candles", "Chart type", (p) => {
+  const type = pop(g3, TB_ICON.candles + TB_ICON.caret, "Chart type", (p) => {
     const cur = app.active().layout.type;
     p.innerHTML = CHART_TYPES.map((t) => `<button class="mi ${cur === t.id ? "sel" : ""}" data-t="${t.id}">${t.label}</button>`).join("");
     p.querySelectorAll<HTMLElement>("[data-t]").forEach((b) => b.addEventListener("click", () => { app.active().setType(b.dataset.t as never); type.close(); }));
   });
 
   // ---- indicators
-  const ind = pop(g3, "Indicators", "Indicators", (p) => {
+  const ind = pop(g3, TB_ICON.indicators, "Indicators", (p) => {
     const v = app.active();
     const kinds = Object.entries(INDICATOR_DEFS) as [IndicatorKind, { label: string }][];
     p.innerHTML = `<h4>Add indicator</h4><div class="grid2">${kinds.map(([k, d]) => `<button class="mi" data-add="${k}">${d.label}</button>`).join("")}</div>
@@ -187,7 +215,7 @@ export function buildToolbar(root: HTMLElement, app: App): Toolbar {
   };
 
   // ---- visibility (the eye)
-  pop(g3, "&#128065;", "Show or hide chart layers", (p) => {
+  pop(g3, TB_ICON.eye, "Show or hide chart layers", (p) => {
     const h = app.active().layout.hide;
     const row = (k: string, label: string, hidden: boolean) => `<label class="ck"><input type="checkbox" data-h="${k}" ${hidden ? "" : "checked"} /> ${label}</label>`;
     p.innerHTML = `<h4>Visible layers</h4>${row("heat", "Liquidity heat", h.heat)}${row("walls", "Wall markers", h.walls)}${row("indicators", "Indicators", h.indicators)}${row("compares", "Compared symbols", h.compares)}`;
@@ -195,7 +223,7 @@ export function buildToolbar(root: HTMLElement, app: App): Toolbar {
   });
 
   // ---- trade flow
-  const flow = pop(g3, "Flow", "Trade flow: footprint, volume profile, delta", (p) => {
+  const flow = pop(g3, TB_ICON.flow, "Trade flow: footprint, volume profile, delta", (p) => {
     const v = app.active();
     const f = v.layout.flow;
     p.innerHTML = `<h4>Trade flow</h4>
@@ -212,7 +240,7 @@ export function buildToolbar(root: HTMLElement, app: App): Toolbar {
   });
 
   // ---- heat controls
-  const heat = pop(g3, "Heat", "Heat colour controls", (p) => {
+  const heat = pop(g3, TB_ICON.heat, "Heat colour controls", (p) => {
     const o = app.heatOpts();
     const slider = (o.minQty <= 0 ? 0 : Math.round(20 * Math.log10(o.minQty)));
     p.innerHTML = `<h4>Heat</h4>
@@ -234,7 +262,7 @@ export function buildToolbar(root: HTMLElement, app: App): Toolbar {
   sep();
   // ---- alerts
   const g4 = group();
-  const alert = pop(g4, "&#128276;", "Price alerts", (p) => {
+  const alert = pop(g4, TB_ICON.bell, "Price alerts", (p) => {
     const v = app.active();
     const mine = app.alerts().filter((a) => a.symbol === v.symbol);
     const px = v.lastPrice != null ? v.lastPrice.toFixed(2) : "";
@@ -254,7 +282,7 @@ export function buildToolbar(root: HTMLElement, app: App): Toolbar {
   replayBtn.type = "button";
   replayBtn.className = "tb";
   replayBtn.title = "Replay: step through the past, with the heat as it was";
-  replayBtn.innerHTML = "&#9198; Replay";
+  replayBtn.innerHTML = TB_ICON.replay;
   replayBtn.addEventListener("click", () => {
     const v = app.active();
     if (v.replay.active) v.stopReplay();
@@ -269,25 +297,25 @@ export function buildToolbar(root: HTMLElement, app: App): Toolbar {
   undoBtn.type = "button";
   undoBtn.className = "tb";
   undoBtn.title = "Undo";
-  undoBtn.innerHTML = "&#8630;";
+  undoBtn.innerHTML = TB_ICON.undo;
   undoBtn.addEventListener("click", () => app.undo());
   const redoBtn = document.createElement("button");
   redoBtn.type = "button";
   redoBtn.className = "tb";
   redoBtn.title = "Redo";
-  redoBtn.innerHTML = "&#8631;";
+  redoBtn.innerHTML = TB_ICON.redo;
   redoBtn.addEventListener("click", () => app.redo());
   g5.append(undoBtn, redoBtn);
 
   sep();
   // ---- layout grid + saved layouts
   const g6 = group();
-  const grid = pop(g6, "&#9638; 1", "Number of charts", (p) => {
+  const grid = pop(g6, TB_ICON.grid + "<span class=\"n\">1</span>", "Number of charts", (p) => {
     const n = app.grid();
     p.innerHTML = [1, 2, 4].map((k) => `<button class="mi ${n === k ? "sel" : ""}" data-g="${k}">${k === 1 ? "1 chart" : k === 2 ? "2 charts side by side" : "4 charts (2 x 2)"}</button>`).join("");
     p.querySelectorAll<HTMLElement>("[data-g]").forEach((b) => b.addEventListener("click", () => { app.setGrid(Number(b.dataset.g)); grid.close(); }));
   });
-  const saved = pop(g6, "Unnamed", "Save and load layouts", (p) => {
+  const saved = pop(g6, TB_ICON.save + "<span class=\"n\">Unnamed</span>", "Save and load layouts", (p) => {
     const names = app.savedLayouts();
     p.innerHTML = `<h4>Layouts</h4><div class="row2"><input class="in" id="lname" placeholder="Name this layout" value="${esc(app.layoutName())}" /><button class="btn" id="lsave">Save</button></div>
       ${names.length ? names.map((n) => `<div class="li"><button class="mi grow" data-load="${esc(n)}">${esc(n)}</button><button class="x" data-del="${esc(n)}">Delete</button></div>`).join("") : '<p class="hint">No saved layouts. A layout keeps the symbols, timeframes, chart types, indicators and visibility of every chart.</p>'}`;
@@ -308,7 +336,7 @@ export function buildToolbar(root: HTMLElement, app: App): Toolbar {
   shotBtn.type = "button";
   shotBtn.className = "tb";
   shotBtn.title = "Save a picture of the chart";
-  shotBtn.innerHTML = "&#128247;";
+  shotBtn.innerHTML = TB_ICON.camera;
   shotBtn.addEventListener("click", () => app.screenshot());
   const zbtn = (label: string, title: string, act: () => void) => {
     const b = document.createElement("button");
@@ -320,13 +348,13 @@ export function buildToolbar(root: HTMLElement, app: App): Toolbar {
     return b;
   };
   right.append(
-    zbtn("&minus;", "Zoom out", () => app.active().zoom(1.5)),
-    zbtn("&#43;", "Zoom in", () => app.active().zoom(1 / 1.5)),
-    zbtn("&#9197;", "Jump to the latest bar", () => app.active().latest()),
+    zbtn(TB_ICON.zoomOut, "Zoom out", () => app.active().zoom(1.5)),
+    zbtn(TB_ICON.zoomIn, "Zoom in", () => app.active().zoom(1 / 1.5)),
+    zbtn(TB_ICON.latest, "Jump to the latest bar", () => app.active().latest()),
     themeBtn,
     shotBtn,
   );
-  const moreMenu = pop(right, "&#8943;", "More", (p) => {
+  const moreMenu = pop(right, TB_ICON.more, "More", (p) => {
     p.innerHTML = `<button class="mi" id="csv">Export candles (CSV)</button><button class="mi" id="rst">Reset everything saved here</button>`;
     p.querySelector("#csv")!.addEventListener("click", () => { app.exportCsv(); moreMenu.close(); });
     p.querySelector("#rst")!.addEventListener("click", () => { if (confirm("Clear saved layouts, alerts, paper trades and settings in this browser?")) app.resetAll(); });
@@ -364,13 +392,13 @@ export function buildToolbar(root: HTMLElement, app: App): Toolbar {
     const v = app.active();
     ivBtns.forEach((b) => b.classList.toggle("sel", b.dataset.iv === v.layout.interval));
     more.btn.classList.toggle("sel", !quick.includes(v.layout.interval));
-    type.btn.textContent = CHART_TYPES.find((t) => t.id === v.layout.type)?.label ?? "Candles";
+    type.btn.innerHTML = (TB_ICON[v.layout.type] ?? TB_ICON.candles) + TB_ICON.caret;
     undoBtn.disabled = !app.canUndo();
     redoBtn.disabled = !app.canRedo();
     replayBtn.classList.toggle("on", v.replay.active);
-    grid.btn.innerHTML = `&#9638; ${app.grid()}`;
-    saved.btn.textContent = app.layoutName() || "Unnamed";
-    themeBtn.innerHTML = app.theme() === "dark" ? "&#9728;" : "&#9790;";
+    grid.btn.innerHTML = `${TB_ICON.grid}<span class="n">${app.grid()}</span>`;
+    saved.btn.innerHTML = `${TB_ICON.save}<span class="n">${esc(app.layoutName() || "Unnamed")}</span>`;
+    themeBtn.innerHTML = app.theme() === "dark" ? TB_ICON.sun : TB_ICON.moon;
     themeBtn.title = app.theme() === "dark" ? "Light theme" : "Dark theme";
     for (const p of pops) if (p.isOpen && p !== alert) p.refresh();
   };
