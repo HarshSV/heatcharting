@@ -55,6 +55,23 @@ export const walls = (symbol: string, minutes = 90) =>
   get<{ events: WallEvent[] }>(`/api/walls?symbol=${encodeURIComponent(symbol)}&minutes=${minutes}`).then((r) => r.events);
 export const flow = (symbol: string, minutes = 120) =>
   get<{ events: [number, number, number, number][] }>(`/api/flow?symbol=${encodeURIComponent(symbol)}&minutes=${minutes}`).then((r) => r.events);
+export interface QuoteRow {
+  symbol: string;
+  ltp: number | null;
+  prev_close: number | null;
+  change: number | null;
+  change_pct: number | null;
+  open: number | null;
+  high: number | null;
+  low: number | null;
+  volume: number | null;
+  upper_circuit: number | null;
+  lower_circuit: number | null;
+  week52_high: number | null;
+  week52_low: number | null;
+}
+export const quotes = (symbols: string[]) =>
+  get<{ quotes: Record<string, QuoteRow> }>(`/api/quotes?symbols=${encodeURIComponent(symbols.join(","))}`).then((r) => r.quotes);
 export const health = () => get<{ angel_configured: boolean; feed_connected: boolean; last_message_age_s: number | null }>("/api/health");
 
 /** Live messages for one symbol: depth snapshots and wall events. Reconnects by itself until close() is called. */

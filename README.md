@@ -25,6 +25,8 @@ This is an original implementation (Python server + TypeScript web app). It cont
 | Paper trading | **Trade** button: practise buys and sells at the live price with a cash balance, positions, realised and open P&L. Practice only: no order is ever sent to a broker |
 | Drawing tools | Left toolbar: cursor, trend line, ray, horizontal line, vertical line, rectangle, Fibonacci retracement, text note and a measure tool (price, percentage, bars and time of a move). Drawings are kept in time and price, so they follow zooming and panning; select, drag, recolour, delete (Delete key), undo and redo (Ctrl+Z, Ctrl+Y), magnet to candle highs and lows, hide all. Saved per symbol in this browser |
 | Trade flow | **Flow** menu: footprint (sell x buy at each price inside each bar, with the bar's delta), volume profile (volume at price in view, buy and sell split, point of control marked), plus Delta and Cumulative-delta panes. Zoom buttons (+ and -) and a jump-to-latest button sit on the right of the toolbar |
+| Bottom bar | Range buttons (1D, 5D, 1M, 3M, 6M, YTD, 1Y, 5Y, All) that also pick a suitable timeframe, the IST clock with a market open / pre-open / closed badge (from the clock only: weekdays 09:15 to 15:30, trading holidays are not known), and the percentage, log and auto price-scale switches |
+| Right panel | An icon rail opens one panel at a time: **Order book and walls**, **Watchlist** (live prices and change, add, remove, click to open), **Alerts** (all alerts, remove, click to open), **Data window** (the bar under the cursor with indicator values, plus today's quote: previous close, day range, volume, circuits, 52-week range) and **Objects** (every drawing, indicator and comparison on the chart, with remove) |
 | Order book panel | The live best-five ladder with quantity bars |
 | Recording | Every snapshot is stored in SQLite (7 days), so a refresh or a closed market still shows the last recorded session |
 | Honest status | "Live", "No update for N s", or "Waiting for the feed (market closed?)"; unknown values are never shown as zero |
@@ -64,9 +66,9 @@ Tests: `pytest tests` (server) and `cd web && npm test` (heat rules). Type check
 
 ```
 server/   app.py (API + WebSocket) · feed.py (Angel depth socket) · angel.py (search, candles) · angel_session.py (shared login)
-          heat.py (pure functions) · walls.py (wall tracker) · flow.py (trade flow estimate) · store.py (SQLite)
+          heat.py (pure functions) · walls.py (wall tracker) · flow.py (trade flow estimate) · quotes.py (watchlist quotes) · store.py (SQLite)
 web/      src/main.ts · heatmap.ts (canvas heat layer on Lightweight Charts) · scale.ts (colour and wall rules) · api.ts · style.css
-tests/    test_server.py · test_walls.py · test_flow.py
+tests/    test_server.py · test_walls.py · test_flow.py · test_quotes.py
 docs/     FEATURES.md (what is built, what is next)
 ```
 

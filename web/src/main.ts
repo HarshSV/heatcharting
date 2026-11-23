@@ -5,6 +5,8 @@ import { clampOptions, wallLine, type HeatOptions } from "./scale";
 import { DEFAULT_LAYOUT, History, cloneLayout, sanitizeLayout, type Layout } from "./state";
 import { INTERVALS, IST } from "./transform";
 import { COLORS, TOOLS, type Tool } from "./draw";
+import { buildDock, type Dock } from "./panels";
+import { RANGES, addSymbol, clock, marketState, sanitizeWatch } from "./ranges";
 import { buildToolbar, type App } from "./toolbar";
 import { ChartView } from "./view";
 import "./style.css";
@@ -12,7 +14,7 @@ import "./toolbar.css";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const ids = INTERVALS.map((i) => i.id);
-const KEYS = { heat: "heatcharting.heat", work: "heatcharting.workspace", layouts: "heatcharting.layouts", theme: "heatcharting.theme" };
+const KEYS = { watch: "heatcharting.watch", heat: "heatcharting.heat", work: "heatcharting.workspace", layouts: "heatcharting.layouts", theme: "heatcharting.theme" };
 const DEFAULT_SYMBOLS = ["RELIANCE", "TCS", "INFY", "HDFCBANK"];
 
 function read<T>(key: string, fallback: T): T {
@@ -133,6 +135,8 @@ function showActive() {
   toolbar.refresh();
   showReplay();
   refreshTools();
+  refreshBottom();
+  dock.refresh();
 }
 
 // ------------------------------------------------------------------ persistence
@@ -166,7 +170,13 @@ function createView(symbol: string, layout?: Layout): Ctx {
       if (c === active()) $("note").textContent = t;
     },
     tool: () => {
-      if (c === active()) refreshTools();
+      if (c === active()) {
+        refreshTools();
+        dock.refresh();
+      }
+    },
+    hover: () => {
+      if (c === active()) dock.hover();
     },
     changed: () => {
       c.history.push(c.view.layout);
@@ -174,6 +184,8 @@ function createView(symbol: string, layout?: Layout): Ctx {
       if (c === active()) {
         toolbar.refresh();
         showReplay();
+        refreshBottom();
+        dock.refresh();
       }
     },
   });
@@ -440,6 +452,66 @@ function refreshTools() {
   toolsEl.querySelectorAll<HTMLElement>(".sw").forEach((b) => b.classList.toggle("on", b.dataset.c === st.color));
 }
 buildTools();
+
+// ------------------------------------------------------------------ bottom bar and the dock on the right
+const rangesEl = $("ranges");
+for (const r of RANGES) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "rg";
+  b.dataset.r = r.id;
+  b.textContent = r.label;
+  b.title = r.id === "All" ? "Everything loaded" : `Show ${r.label} (${r.interval} bars)`;
+  b.addEventListener("click", async () => {
+    await active().view.showRange(r);
+    refreshBottom();
+  });
+  rangesEl.appendChild(b);
+}
+function refreshBottom() {
+  if (!ctxs.length) return;
+  const v = active().view;
+  rangesEl.querySelectorAll<HTMLElement>(".rg").forEach((b) => b.classList.toggle("on", b.dataset.r === v.rangeId));
+  $("scPct").classList.toggle("on", v.layout.scale.pct);
+  $("scLog").classList.toggle("on", v.layout.scale.log);
+  $("scAuto").classList.toggle("on", v.layout.scale.auto);
+}
+$("scPct").addEventListener("click", () => active().view.setScale({ pct: !active().view.layout.scale.pct }));
+$("scLog").addEventListener("click", () => active().view.setScale({ log: !active().view.layout.scale.log }));
+$("scAuto").addEventListener("click", () => active().view.setScale({ auto: !active().view.layout.scale.auto }));
+function tickClock() {
+  const now = Date.now();
+  $("clock").textContent = clock(now);
+  const m = marketState(now);
+  const el = $("mkt");
+  el.textContent = m === "open" ? "Market open" : m === "pre-open" ? "Pre-open" : "Market closed";
+  el.className = `mkt ${m}`;
+  el.title = "From the clock only: weekdays 09:15 to 15:30 IST. Trading holidays are not known here.";
+}
+tickClock();
+setInterval(tickClock, 1000);
+
+let watchList: string[] = sanitizeWatch(read<unknown>(KEYS.watch, ["RELIANCE", "TCS", "INFY", "HDFCBANK", "SBIN"]));
+const dock: Dock = buildDock($("dock"), $("rail"), {
+  active: () => active().view,
+  openSymbol: (sym) => {
+    const c = active();
+    c.walls = [];
+    c.snap = null;
+    showWalls(c);
+    history.replaceState(null, "", `#${sym}`);
+    void c.view.setSymbol(sym).then(persist);
+    showQuote(c);
+    dock.refresh();
+  },
+  alerts: () => alerts,
+  removeAlert: (id) => app.removeAlert(id),
+  watch: () => watchList,
+  setWatch: (l) => {
+    watchList = l.reduce<string[]>((a, s) => addSymbol(a, s), []);
+    localStorage.setItem(KEYS.watch, JSON.stringify(watchList));
+  },
+});
 
 // ------------------------------------------------------------------ replay bar
 function showReplay() {

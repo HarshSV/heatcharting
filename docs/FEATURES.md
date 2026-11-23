@@ -12,6 +12,8 @@ Written from our own requirements for an NSE order-flow chart. Nothing here is c
 - Drawing tools: trend line, ray, horizontal and vertical line, rectangle, Fibonacci retracement, text, measure; select, move, recolour, delete, undo and redo, magnet, hide; saved per symbol
 - Trade flow: footprint, volume profile (with point of control), delta and cumulative delta panes, estimated from the live depth feed
 - Zoom buttons and jump to the latest bar
+- Bottom bar: range buttons, IST clock with market badge, percentage / log / auto price scale
+- Right panel with an icon rail: order book and walls, watchlist with live quotes, alerts list, data window, objects list
 - Live order-book ladder
 - Candle loading that survives Angel rate limits (cached for 20 s, retried, and the live feed never waits for it)
 - Depth recording (SQLite, 7 days) and replay of the last session
@@ -25,6 +27,8 @@ Written from our own requirements for an NSE order-flow chart. Nothing here is c
 5. **Strategy tester and screener** (largest piece, last).
 
 ## Known limits
+- The market badge uses weekdays and clock hours only; it does not know NSE trading holidays.
+- The watchlist shows prices from Angel One's quote snapshot (refreshed every few seconds), not a live stream.
 - Trade flow is an estimate from one-second readings (lumped trades, side from the best bid and ask); it is not a trade-by-trade tape.
 - Drawings are not drawn on the lower indicator panes, and Ctrl+Z undoes drawing changes only (the toolbar's undo is for chart settings).
 - Alerts are checked in the browser, so they only fire while the page is open (server-side alerts are a later step).

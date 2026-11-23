@@ -4,6 +4,7 @@
   GET  /api/search?q=                 NSE companies by symbol or name
   GET  /api/candles?symbol=&interval=&days=  candles (Angel One: ONE_MINUTE .. ONE_DAY; 4h and weekly are built from 1h and daily in the browser)
   GET  /api/snapshots?symbol=&minutes=  recorded depth snapshots (best five bids and asks over time)
+  GET  /api/quotes?symbols=A,B      live quotes (last price, change, high, low, volume, circuits) for the watchlist and data window
   GET  /api/walls?symbol=&minutes=    wall events: a large resting order appeared, was pulled, or was eaten
   GET  /api/flow?symbol=&minutes=     estimated trade flow: price, quantity and side of the volume between snapshots
   WS   /ws?symbol=                    live messages: {"type":"snap",...} depth snapshots and {"type":"wall",...} wall events
@@ -83,6 +84,18 @@ def snapshots(symbol: str, minutes: int = 90):
     if last is None:
         return {"symbol": s["symbol"], "snapshots": [], "note": "Nothing recorded yet for this symbol. Open it during market hours."}
     return {"symbol": s["symbol"], "snapshots": store.since(s["symbol"], last - max(1, min(minutes, 600)) * 60_000)}
+
+
+@app.get("/api/quotes")
+def quotes(symbols: str):
+    """Live quotes for a comma-separated list of NSE symbols (at most 40)."""
+    names = [x.strip().upper() for x in symbols.split(",") if x.strip()]
+    if not names:
+        return {"quotes": {}}
+    try:
+        return {"quotes": angel.quotes(names)}
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
 
 
 @app.get("/api/walls")

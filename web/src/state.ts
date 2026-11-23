@@ -47,6 +47,8 @@ export interface Layout {
   hide: { heat: boolean; walls: boolean; indicators: boolean; compares: boolean };
   /** trade flow drawn on the chart */
   flow: { footprint: boolean; profile: boolean };
+  /** price axis: percentage or logarithmic (not both), and whether it fits the data by itself */
+  scale: { pct: boolean; log: boolean; auto: boolean };
 }
 
 export const DEFAULT_LAYOUT: Layout = {
@@ -56,6 +58,7 @@ export const DEFAULT_LAYOUT: Layout = {
   compares: [],
   hide: { heat: false, walls: false, indicators: false, compares: false },
   flow: { footprint: false, profile: false },
+  scale: { pct: false, log: false, auto: true },
 };
 
 export const cloneLayout = (l: Layout): Layout => JSON.parse(JSON.stringify(l)) as Layout;
@@ -116,6 +119,11 @@ export function sanitizeLayout(x: unknown, knownIntervals: string[]): Layout {
     compares: (Array.isArray(o.compares) ? o.compares : []).filter((s): s is string => typeof s === "string" && /^[A-Z0-9&-]{1,20}$/.test(s)).slice(0, 4),
     hide: { heat: h.heat === true, walls: h.walls === true, indicators: h.indicators === true, compares: h.compares === true },
     flow: { footprint: (o.flow as Layout["flow"] | undefined)?.footprint === true, profile: (o.flow as Layout["flow"] | undefined)?.profile === true },
+    scale: (() => {
+      const sc = (o.scale ?? {}) as Partial<Layout["scale"]>;
+      const pct = sc.pct === true;
+      return { pct, log: !pct && sc.log === true, auto: sc.auto !== false };
+    })(),
   };
 }
 

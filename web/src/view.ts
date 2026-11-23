@@ -8,6 +8,7 @@ import {
   HistogramSeries,
   LineSeries,
   LineStyle,
+  PriceScaleMode,
   createChart,
   type IChartApi,
   type IPriceLine,
@@ -23,6 +24,7 @@ import { FlowLayer } from "./flowlayer";
 import { HeatLayer } from "./heatmap";
 import { TimeMap } from "./timemap";
 import { atr, bollinger, closes, ema, macd, rsi, sma, vwap, type Bar, type Series } from "./indicators";
+import { RANGES, firstBarFrom, rangeStart, type RangeSpec } from "./ranges";
 import { DEFAULTS, type HeatOptions } from "./scale";
 import { cloneLayout, DEFAULT_LAYOUT, describe, INDICATOR_DEFS, newIndicator, type ChartType, type IndicatorKind, type IndicatorSpec, type Layout } from "./state";
 import { IST, aggregate, bucketStart, heikinAshi, intervalOf, rebase, toChartSec, type Interval } from "./transform";
@@ -38,6 +40,8 @@ export interface ViewHooks {
   note(text: string): void;
   /** a drawing tool finished and the tool went back to the cursor */
   tool(t: Tool): void;
+  /** the crosshair moved (for the data window) */
+  hover(): void;
 }
 
 const UP = "#22c55e";
@@ -79,6 +83,9 @@ export class ChartView {
   private timers: number[] = [];
   private heatOpts: HeatOptions = DEFAULTS;
   private replayState = { active: false, i: 0, playing: false, speed: 1, timer: 0 };
+  rangeId = "";
+  private hoverTime: number | null = null;
+  private hoverVals: { label: string; value: number | null; color: string }[] = [];
   private seq = 0; // guards against answers that arrive after the symbol or interval changed
 
   constructor(container: HTMLElement, private hooks: ViewHooks) {
@@ -114,7 +121,11 @@ export class ChartView {
       this.flowLayer.resize(w, h);
       this.drawLayer.resize(w, h);
     }).observe(this.box);
-    this.chart.subscribeCrosshairMove((p) => this.updateLegend(p.seriesData as Map<ISeriesApi<SeriesType>, unknown>));
+    this.chart.subscribeCrosshairMove((p) => {
+      this.hoverTime = p.time == null ? null : (p.time as number);
+      this.updateLegend(p.seriesData as Map<ISeriesApi<SeriesType>, unknown>);
+      this.hooks.hover();
+    });
     this.timers.push(window.setInterval(() => void this.refreshBars(), 60_000));
   }
 
@@ -283,6 +294,7 @@ export class ChartView {
     this.layout = cloneLayout(l);
     this.rebuildMain();
     this.rebuildIndicators();
+    this.applyScale();
     for (const [s, c] of this.compareSeries) {
       if (!l.compares.includes(s)) {
         this.chart.removeSeries(c.series);
@@ -472,6 +484,61 @@ export class ChartView {
     return null;
   }
 
+  // ------------------------------------------------------------------ price axis, ranges, data window, objects
+  setScale(p: Partial<Layout["scale"]>) {
+    const next = { ...this.layout.scale, ...p };
+    if (p.pct) next.log = false;
+    if (p.log) next.pct = false;
+    this.layout.scale = next;
+    this.applyScale();
+    this.hooks.changed();
+  }
+  applyScale() {
+    const sc = this.layout.scale;
+    this.chart.priceScale("right").applyOptions({ mode: sc.pct ? PriceScaleMode.Percentage : sc.log ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal, autoScale: sc.auto });
+    this.heat.invalidate();
+    this.flowLayer.invalidate();
+    this.drawLayer.invalidate();
+  }
+
+  /** The range buttons: pick the timeframe that suits the range, then show the last N days of it. */
+  async showRange(spec: RangeSpec) {
+    this.rangeId = spec.id;
+    if (this.layout.interval !== spec.interval) await this.setInterval(spec.interval);
+    const times = this.raw.map((b) => b.time);
+    if (!times.length) return;
+    const start = rangeStart(spec, times[times.length - 1]);
+    if (start == null) this.chart.timeScale().fitContent();
+    else this.chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, firstBarFrom(times, start) - 1), to: times.length - 1 + 6 });
+  }
+  get ranges() {
+    return RANGES;
+  }
+
+  /** The bar under the crosshair (or the latest one) and the values of the indicators there, for the data window. */
+  get dataWindow() {
+    const bars = this.visibleRaw();
+    const i = this.hoverTime == null ? bars.length - 1 : bars.findIndex((b) => b.time === this.hoverTime);
+    const bar = i >= 0 ? bars[i] : bars[bars.length - 1] ?? null;
+    const prev = bar && i > 0 ? bars[i - 1] : null;
+    return { symbol: this.symbol, interval: this.interval.label, bar, prevClose: prev?.close ?? null, values: this.hoverTime == null ? [] : this.hoverVals, live: this.hoverTime == null };
+  }
+
+  /** Everything on the chart that can be listed, hidden or removed. */
+  objects(): { id: string; kind: "drawing" | "indicator" | "compare"; label: string; color: string }[] {
+    const out: { id: string; kind: "drawing" | "indicator" | "compare"; label: string; color: string }[] = [];
+    for (const d of this.drawLayer.drawings) out.push({ id: d.id, kind: "drawing", label: d.kind === "text" ? `Text: ${d.text ?? ""}` : d.kind, color: d.color });
+    for (const i of this.layout.indicators) out.push({ id: i.id, kind: "indicator", label: describe(i), color: i.color });
+    for (const c of this.layout.compares) out.push({ id: c, kind: "compare", label: `vs ${c}`, color: "#f59e0b" });
+    return out;
+  }
+  selectDrawing(id: string) {
+    this.drawLayer.select(id);
+  }
+  deleteDrawing(id: string) {
+    this.drawLayer.deleteById(id);
+  }
+
   // ------------------------------------------------------------------ trade flow and drawings
   /** In replay, nothing after the replay cursor counts. */
   private flowCutoff(): number | null {
@@ -657,8 +724,10 @@ export class ChartView {
     const f = (v: number | undefined) => (num(v) ? v.toFixed(2) : "-");
     const up = num(c) && num(o) ? c >= o : true;
     const parts = [`<b>${this.symbol || "-"}</b> <span class="iv">${this.interval.label}</span>`, `<span class="${up ? "up" : "down"}">O ${f(o)} H ${f(h)} L ${f(l)} C ${f(c)}</span>`];
+    this.hoverVals = [];
     for (const r of this.runs) {
       const v = data.get(r.series[r.series.length > 1 && r.spec.kind !== "macd" ? 1 : 0]) as { value?: number } | undefined;
+      this.hoverVals.push({ label: describe(r.spec), value: num(v?.value) ? v!.value! : null, color: r.spec.color });
       parts.push(`<span class="ind" style="color:${r.spec.color}">${describe(r.spec)}${num(v?.value) ? " " + v.value.toFixed(2) : ""}</span>`);
     }
     for (const [sym] of this.compareSeries) parts.push(`<span class="ind">vs ${sym}</span>`);

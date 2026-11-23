@@ -21,6 +21,16 @@
         <div id="tools" class="drawtools"></div>
         <div class="stagebody">
         <div id="grid" class="grid g1"></div>
+        <div class="bottombar">
+          <div id="ranges" class="ranges"></div>
+          <div class="bb-right">
+            <span id="mkt" class="mkt"></span>
+            <span id="clock" class="clock"></span>
+            <button id="scPct" type="button" class="sc" title="Percentage price scale">%</button>
+            <button id="scLog" type="button" class="sc" title="Logarithmic price scale">log</button>
+            <button id="scAuto" type="button" class="sc" title="Fit the price scale to the data automatically">auto</button>
+          </div>
+        </div>
         <div id="replayBar" class="replay" hidden>
           <button id="rwBack" type="button" title="Back one bar">&#9664;&#9664;</button>
           <button id="rwPlay" type="button" title="Play or pause">&#9654;</button>
@@ -32,7 +42,8 @@
         </div>
         </div>
       </section>
-      <aside class="ladder">
+      <aside id="dock" class="dock">
+        <section class="dp ladder" data-p="book">
         <h2>Order book <small>best 5</small></h2>
         <div id="asks"></div>
         <div id="mid">-</div>
@@ -40,7 +51,13 @@
         <h2 class="log-h">Walls <small>large orders</small></h2>
         <ul id="wallLog"><li class="empty">None yet. A wall is an order several times the usual size.</li></ul>
         <p class="note">Angel One shows the five best bids and asks. Brighter bands in the chart mean more shares resting at that price.</p>
+        </section>
+        <section class="dp ladder" data-p="watch" hidden></section>
+        <section class="dp ladder" data-p="alerts" hidden></section>
+        <section class="dp ladder" data-p="data" hidden></section>
+        <section class="dp ladder" data-p="objects" hidden></section>
       </aside>
+      <nav id="rail" class="rail"></nav>
     </main>
     <div id="toast" hidden></div>
     <script type="module" src="/src/main.ts"></script>

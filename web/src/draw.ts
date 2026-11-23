@@ -141,6 +141,17 @@ export class DrawLayer {
   get currentColor() {
     return this.color;
   }
+  select(id: string | null) {
+    this.selected = id && this.list.some((d) => d.id === id) ? id : null;
+    this.invalidate();
+  }
+  deleteById(id: string) {
+    if (!this.list.some((d) => d.id === id)) return;
+    this.commit();
+    this.list = this.list.filter((d) => d.id !== id);
+    if (this.selected === id) this.selected = null;
+    this.save();
+  }
   clear() {
     if (!this.list.length) return;
     this.commit();

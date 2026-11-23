@@ -110,3 +110,43 @@ def candles(token: str, days: int = 2, interval: str = "ONE_MINUTE") -> list[dic
         out.append({"time": int(dt.datetime.fromisoformat(ts).timestamp()), "open": o, "high": h, "low": l, "close": c, "volume": v})
     _cache[key] = (time.time(), out)
     return out
+
+
+_qcache: dict = {"t": 0.0, "key": None, "val": {}}
+
+
+def quotes(symbols: list[str]) -> dict[str, dict]:
+    """Live quotes for up to 40 NSE symbols in ONE Angel call, kept for 3 seconds. Symbols Angel does not return are left out."""
+    import quotes as q
+    syms = []
+    for s in symbols:
+        r = resolve(s)
+        if r and r["symbol"] not in [x["symbol"] for x in syms]:
+            syms.append(r)
+    syms = syms[:40]
+    if not syms:
+        return {}
+    key = tuple(sorted(x["symbol"] for x in syms))
+    if _qcache["key"] == key and time.time() - _qcache["t"] < 3:
+        return _qcache["val"]
+    sc = client()
+    if sc is None:
+        raise RuntimeError("Angel One is not available (check the credentials in .env)")
+    payload = {"NSE": [x["token"] for x in syms]}
+    try:
+        res = sc.getMarketData("FULL", payload)
+        if angel_session.is_invalid_token(res):
+            sc, _ = angel_session.ensure(bad_ts=_client["ts"])
+            res = sc.getMarketData("FULL", payload) if sc else res
+    except Exception as e:
+        raise RuntimeError(f"Angel quote request failed: {str(e)[:140]}") from e
+    if not isinstance(res, dict) or res.get("status") is not True:
+        raise RuntimeError(f"Angel quote request failed: {(res or {}).get('message') if isinstance(res, dict) else res}")
+    by_token = {x["token"]: x["symbol"] for x in syms}
+    out = {}
+    for it in (res.get("data") or {}).get("fetched", []):
+        sym = by_token.get(str(it.get("symbolToken")))
+        if sym:
+            out[sym] = q.parse(it, sym)
+    _qcache.update(t=time.time(), key=key, val=out)
+    return out
