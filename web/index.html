@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HeatCharting · NSE liquidity heatmap</title>
+  </head>
+  <body>
+    <header class="bar">
+      <div class="brand">Heat<span>Charting</span><em>NSE</em></div>
+      <div class="search">
+        <input id="q" type="search" placeholder="Search NSE symbol or company" autocomplete="off" spellcheck="false" />
+        <ul id="results" hidden></ul>
+      </div>
+      <div class="quote"><b id="sym">-</b><span id="ltp">-</span><span id="chg"></span></div>
+      <div class="status"><span id="dot"></span><span id="status">Starting...</span></div>
+    </header>
+    <main>
+      <section class="chart-wrap"><div id="chart"></div><canvas id="heat"></canvas><div id="legend"></div></section>
+      <aside class="ladder">
+        <h2>Order book <small>best 5</small></h2>
+        <div id="asks"></div>
+        <div id="mid">-</div>
+        <div id="bids"></div>
+        <p class="note">Angel One shows the five best bids and asks. Brighter bands in the chart mean more shares resting at that price.</p>
+      </aside>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
